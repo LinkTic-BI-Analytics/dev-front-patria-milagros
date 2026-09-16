@@ -1,0 +1,74 @@
+/* Tailwind v4 — tema Patria Milagro.
+   Importar DESPUÉS de tokens.css:
+     @import "tailwindcss";
+     @import "./tokens.css";
+     @import "./tailwind-theme.css";
+   Genera utilidades como bg-base, bg-surface-1, text-primary, text-accent,
+   border-subtle, bg-action-primary, rounded-sm/lg, shadow-card, font-display…
+   El tema cambia solo con data-theme="light" en <html>; sin clases dark:. */
+
+@theme inline {
+  /* Colores semánticos (reactivos al tema) */
+  --color-base: var(--bg-base);
+  --color-surface-1: var(--bg-surface-1);
+  --color-surface-2: var(--bg-surface-2);
+  --color-surface-3: var(--bg-surface-3);
+  --color-hero: var(--bg-hero);
+
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-accent: var(--text-accent);
+  --color-link: var(--text-link);
+
+  --color-action-primary: var(--action-primary-bg);
+  --color-action-primary-text: var(--action-primary-text);
+
+  --color-subtle: var(--border-subtle);
+  --color-default: var(--border-default);
+  --color-strong: var(--border-strong);
+
+  --color-success: var(--status-success);
+  --color-warning: var(--status-warning);
+  --color-danger: var(--status-danger);
+  --color-info: var(--status-info);
+  --color-success-bg: var(--status-success-bg);
+  --color-warning-bg: var(--status-warning-bg);
+  --color-danger-bg: var(--status-danger-bg);
+  --color-info-bg: var(--status-info-bg);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+
+  /* Primitivos de marca (fijos) */
+  --color-gold-500: var(--gold-500);
+  --color-gold-600: var(--gold-600);
+  --color-blue-700: var(--blue-700);
+  --color-blue-800: var(--blue-800);
+  --color-blue-950: var(--blue-950);
+  --color-red-500: var(--red-500);
+
+  /* Tipografía */
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  /* Radios */
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+
+  /* Sombras */
+  --shadow-card: var(--shadow-card);
+  --shadow-deep: var(--shadow-deep);
+  --shadow-glow-gold: var(--glow-gold);
+  --shadow-glow-blue: var(--glow-blue);
+
+  /* Motion */
+  --ease-standard: var(--ease-standard);
+}

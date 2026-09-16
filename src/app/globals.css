@@ -1,26 +1,233 @@
 @import "tailwindcss";
+@import "./styles/tokens.css";
+@import "./styles/tailwind-theme.css";
 
+/* Las fuentes llegan por next/font y reemplazan las familias de los tokens. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-display: var(--fuente-montserrat), "Nunito Sans", system-ui, sans-serif;
+  --font-body: var(--fuente-inter), "Nunito Sans", system-ui, sans-serif;
+  --font-mono: var(--fuente-mono), ui-monospace, monospace;
+
+  --glass-bg: rgba(10, 26, 58, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --animate-shimmer: shimmer 1.8s linear infinite;
+  --animate-aurora: aurora 18s ease-in-out infinite alternate;
+  --animate-pulso: pulso 2.4s var(--ease-standard) infinite;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: rgba(255, 200, 0, 0.35);
+  color: var(--text-primary);
+}
+
+@layer components {
+.cifra {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.etiqueta {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.titulo-display {
+  font-family: var(--font-display);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-tight);
+}
+
+/* Firma tricolor: dorado · azul · rojo */
+.tricolor {
+  display: flex;
+  gap: 4px;
+}
+.tricolor > span {
+  height: 3px;
+  border-radius: 2px;
+}
+.tricolor > span:nth-child(1) {
+  width: 22px;
+  background: var(--gold-500);
+}
+.tricolor > span:nth-child(2) {
+  width: 12px;
+  background: var(--blue-500);
+}
+.tricolor > span:nth-child(3) {
+  width: 12px;
+  background: var(--red-500);
+}
+
+/* Superficie de vidrio para overlays sobre el mapa */
+.vidrio {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+.panel {
+  background: linear-gradient(180deg, rgba(16, 38, 79, 0.55), rgba(10, 26, 58, 0.72));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+}
+
+/* Fondo vivo: aurora navy + grano */
+.fondo-vivo {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background: var(--bg-base);
+}
+.fondo-vivo::before,
+.fondo-vivo::after {
+  content: "";
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.35;
+  animation: var(--animate-aurora);
+}
+.fondo-vivo::before {
+  background: radial-gradient(circle, #003189 0%, transparent 65%);
+  top: -30vmax;
+  left: -20vmax;
+}
+.fondo-vivo::after {
+  background: radial-gradient(circle, rgba(255, 200, 0, 0.35) 0%, transparent 60%);
+  bottom: -35vmax;
+  right: -25vmax;
+  animation-delay: -9s;
+  opacity: 0.18;
+}
+.grano {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@layer components {
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.03) 30%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.03) 70%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+/* Scroll discreto en paneles */
+.scroll-fino {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+.scroll-fino::-webkit-scrollbar {
+  width: 6px;
+}
+.scroll-fino::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 9999px;
+}
+
+}
+
+/* Mapbox: controles y atribución con la marca */
+.mapboxgl-ctrl-group {
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+}
+.mapboxgl-ctrl-group button + button {
+  border-top: 1px solid var(--glass-border) !important;
+}
+.mapboxgl-ctrl-group button .mapboxgl-ctrl-icon {
+  filter: invert(1) brightness(1.4);
+}
+.mapboxgl-ctrl-attrib {
+  background: rgba(6, 20, 42, 0.6) !important;
+  color: var(--text-muted) !important;
+}
+.mapboxgl-ctrl-attrib a {
+  color: var(--text-muted) !important;
+}
+.mapboxgl-canvas:focus {
+  outline: none;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes aurora {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(8vmax, 6vmax, 0) scale(1.15);
+  }
+  100% {
+    transform: translate3d(-4vmax, 10vmax, 0) scale(0.95);
+  }
+}
+
+@keyframes pulso {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 200, 0, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 200, 0, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 200, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

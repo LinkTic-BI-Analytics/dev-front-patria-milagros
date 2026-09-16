@@ -1,0 +1,222 @@
+/* ============================================================
+   PATRIA MILAGRO — Sistema de tokens unificado
+   Fuentes: bancodetalentos.com.co + presidencia.gov.co (especial)
+   Modo por defecto: DARK. Light se activa con [data-theme="light"].
+   ============================================================ */
+
+/* ---------- 1. PRIMITIVOS (no usar directo en componentes) ---------- */
+:root {
+  /* Azul institucional (unifica #003189 Presidencia, #004B9B/#0A2C46/#06142A Banco de Talentos) */
+  --blue-50:  #F3F6FB;
+  --blue-100: #E4EAF3;   /* extraído de Presidencia */
+  --blue-200: #B5D4F4;   /* extraído de Presidencia */
+  --blue-300: #81ADEB;
+  --blue-400: #4E8BE0;   /* series de datos / links en dark */
+  --blue-500: #1D64C8;
+  --blue-600: #004B9B;   /* extraído de Banco de Talentos */
+  --blue-700: #003189;   /* --azul oficial Presidencia */
+  --blue-800: #001D54;   /* --azul-oscuro oficial Presidencia */
+  --blue-850: #0A2C46;   /* texto navy Banco de Talentos */
+  --blue-900: #0A1A3A;   /* superficie elevada dark (loader Presidencia) */
+  --blue-950: #06142A;   /* fondo base dark (footer Banco de Talentos) */
+
+  /* Dorado / Amarillo (unifica #FFC800 institucional y #D4AA45 dorado premium) */
+  --gold-100: #FFF3C4;
+  --gold-200: #FFE58A;
+  --gold-300: #F5D878;   /* extraído Banco de Talentos */
+  --gold-400: #FFD72A;   /* extraído Banco de Talentos */
+  --gold-500: #FFC800;   /* --amarillo oficial Presidencia — CTA principal */
+  --gold-600: #D4AA45;   /* dorado premium Banco de Talentos — detalle/hover */
+  --gold-700: #A97F2C;
+  --gold-800: #86691A;   /* extraído Banco de Talentos */
+
+  /* Rojo bandera (unifica #D80025 Presidencia y #D41136 Banco de Talentos) */
+  --red-300: #FF8095;
+  --red-400: #FF4D6A;    /* rojo legible sobre fondos oscuros */
+  --red-500: #D80025;    /* --rojo oficial Presidencia */
+  --red-600: #AD001E;
+
+  /* Neutros (grafito Presidencia + crema Banco de Talentos) */
+  --neutral-0:   #FFFFFF;
+  --neutral-50:  #F6F5F0;  /* crema Banco de Talentos — fondo light cálido */
+  --neutral-100: #F3F4F6;  /* --gris-niebla Presidencia */
+  --neutral-300: #C9CCD1;
+  --neutral-500: #5F6E78;  /* gris azulado Banco de Talentos */
+  --neutral-600: #4A4A48;  /* --gris-texto Presidencia */
+  --neutral-800: #283746;  /* extraído Banco de Talentos */
+  --neutral-900: #1C1C1A;  /* --grafito Presidencia */
+
+  /* Estado (nuevos — necesarios para el dashboard, no existían en los portales) */
+  --green-400: #34D389;
+  --green-500: #1FA968;
+  --orange-400: #FFA94D;
+  --orange-500: #E8590C;
+
+  /* Tipografía */
+  --font-display: "Montserrat", "Nunito Sans", system-ui, sans-serif; /* titulares */
+  --font-body: "Inter", "Nunito Sans", system-ui, sans-serif;         /* texto y UI */
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;             /* cifras dashboard */
+
+  --text-xs: 0.75rem;      /* 12 — labels uppercase */
+  --text-sm: 0.875rem;     /* 14 */
+  --text-base: 1rem;       /* 16 */
+  --text-lg: 1.1875rem;    /* 19 — lead */
+  --text-xl: 1.375rem;     /* 22 */
+  --text-2xl: 1.75rem;     /* 28 — h3 */
+  --text-3xl: clamp(2rem, 1.4rem + 2vw, 2.75rem);   /* h2 (44 desktop, patrón Presidencia) */
+  --text-display: clamp(2.5rem, 1.5rem + 4.5vw, 4.75rem); /* hero (70–76 en ambos portales) */
+
+  --leading-tight: 1.04;   /* heroes (patrón de ambos: 0.88–1.02) */
+  --leading-snug: 1.25;
+  --leading-normal: 1.5;
+  --tracking-display: -0.03em;  /* titulares grandes (ambos usan negativo) */
+  --tracking-label: 0.08em;     /* labels/botones uppercase (Banco de Talentos) */
+
+  --weight-regular: 400;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+  --weight-black: 900;     /* heroes Presidencia / botones Banco de Talentos */
+
+  /* Radios (2px institucional vs 6–16px moderno → escala unificada) */
+  --radius-xs: 2px;     /* chips institucionales, tags */
+  --radius-sm: 6px;     /* botones, inputs */
+  --radius-md: 10px;    /* cards pequeñas, popovers */
+  --radius-lg: 16px;    /* cards grandes, paneles del dashboard */
+  --radius-full: 9999px;/* pills, avatares, badges */
+
+  /* Espaciado (base 4) */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+  --space-12: 48px; --space-16: 64px; --space-20: 80px; --space-24: 96px;
+
+  /* Layout (Presidencia) */
+  --container-max: 1240px;
+  --container-pad: clamp(1.25rem, 4vw, 3rem);
+
+  /* Motion (Presidencia) */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 450ms;
+}
+
+/* ---------- 2. SEMÁNTICOS — DARK (default) ---------- */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Fondos y superficies (elevación por aclarado del navy) */
+  --bg-base: var(--blue-950);            /* fondo app / body */
+  --bg-surface-1: var(--blue-900);       /* cards, paneles */
+  --bg-surface-2: #10264F;               /* hover de card, dropdown */
+  --bg-surface-3: #16305E;               /* modal, popover */
+  --bg-hero: var(--blue-800);            /* secciones destacadas */
+  --bg-inverse: var(--neutral-50);
+
+  /* Texto */
+  --text-primary: #EDF1F7;               /* nunca blanco puro sobre navy */
+  --text-secondary: rgba(237, 241, 247, 0.72);
+  --text-muted: rgba(237, 241, 247, 0.55);
+  --text-inverse: var(--blue-850);
+  --text-accent: var(--gold-500);
+  --text-link: var(--blue-300);
+  --text-danger: var(--red-400);
+  --text-success: var(--green-400);
+
+  /* Bordes y divisores */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.30);   /* patrón glass Presidencia */
+  --border-accent: var(--gold-500);
+
+  /* Acción */
+  --action-primary-bg: var(--gold-500);
+  --action-primary-text: var(--blue-800);       /* contraste 10.9:1 */
+  --action-primary-hover: var(--gold-400);
+  --action-secondary-border: var(--gold-600);
+  --action-secondary-text: var(--gold-300);
+  --action-ghost-hover: rgba(255, 255, 255, 0.06);
+
+  /* Estado */
+  --status-success: var(--green-400);
+  --status-warning: var(--orange-400);
+  --status-danger: var(--red-400);
+  --status-info: var(--blue-300);
+  --status-success-bg: rgba(52, 211, 137, 0.14);
+  --status-warning-bg: rgba(255, 169, 77, 0.14);
+  --status-danger-bg: rgba(255, 77, 106, 0.14);
+  --status-info-bg: rgba(129, 173, 235, 0.14);
+
+  /* Sombras y glows (patrón Banco de Talentos) */
+  --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.35);
+  --shadow-deep: 0 22px 55px rgba(0, 0, 0, 0.45);
+  --glow-gold: 0 10px 22px rgba(212, 170, 69, 0.35);   /* CTA principal */
+  --glow-blue: 0 0 20px rgba(0, 75, 155, 0.5);          /* elementos activos */
+
+  /* Dashboard — series de datos (orden fijo, AA sobre --bg-surface-1) */
+  --chart-1: var(--gold-500);
+  --chart-2: var(--blue-400);
+  --chart-3: var(--red-400);
+  --chart-4: var(--green-400);
+  --chart-5: var(--orange-400);
+  --chart-6: var(--blue-200);
+  --chart-grid: rgba(255, 255, 255, 0.07);
+  --chart-axis-text: rgba(237, 241, 247, 0.55);
+}
+
+/* ---------- 3. SEMÁNTICOS — LIGHT ---------- */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-base: var(--neutral-50);          /* crema, no blanco puro */
+  --bg-surface-1: var(--neutral-0);
+  --bg-surface-2: var(--neutral-100);
+  --bg-surface-3: var(--neutral-0);
+  --bg-hero: var(--blue-800);            /* héroes siguen siendo navy en light */
+  --bg-inverse: var(--blue-950);
+
+  --text-primary: var(--blue-850);
+  --text-secondary: var(--neutral-600);
+  --text-muted: var(--neutral-500);
+  --text-inverse: #EDF1F7;
+  --text-accent: var(--gold-800);        /* dorado oscurecido: AA sobre claro */
+  --text-link: var(--blue-700);
+  --text-danger: var(--red-500);
+  --text-success: var(--green-500);
+
+  --border-subtle: rgba(10, 44, 70, 0.08);
+  --border-default: rgba(10, 44, 70, 0.16);
+  --border-strong: rgba(10, 44, 70, 0.32);
+  --border-accent: var(--gold-600);
+
+  --action-primary-bg: var(--gold-500);
+  --action-primary-text: var(--blue-800);
+  --action-primary-hover: var(--gold-600);
+  --action-secondary-border: var(--blue-700);
+  --action-secondary-text: var(--blue-700);
+  --action-ghost-hover: rgba(10, 44, 70, 0.05);
+
+  --status-success: var(--green-500);
+  --status-warning: var(--orange-500);
+  --status-danger: var(--red-500);
+  --status-info: var(--blue-600);
+  --status-success-bg: rgba(31, 169, 104, 0.12);
+  --status-warning-bg: rgba(232, 89, 12, 0.10);
+  --status-danger-bg: rgba(216, 0, 37, 0.08);
+  --status-info-bg: rgba(0, 75, 155, 0.08);
+
+  --shadow-card: 0 8px 24px rgba(10, 26, 58, 0.10);
+  --shadow-deep: 0 22px 55px rgba(10, 26, 58, 0.18);
+  --glow-gold: 0 10px 22px rgba(212, 170, 69, 0.30);
+  --glow-blue: 0 0 20px rgba(0, 75, 155, 0.25);
+
+  --chart-1: var(--gold-600);            /* en light el dorado premium rinde mejor */
+  --chart-2: var(--blue-600);
+  --chart-3: var(--red-500);
+  --chart-4: var(--green-500);
+  --chart-5: var(--orange-500);
+  --chart-6: var(--blue-300);
+  --chart-grid: rgba(10, 26, 58, 0.08);
+  --chart-axis-text: var(--neutral-500);
+}
