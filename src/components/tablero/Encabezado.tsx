@@ -26,7 +26,7 @@ export function Encabezado({
       initial={{ opacity: 0, y: -16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      className="relative z-30 flex h-16 shrink-0 items-center gap-4 border-b border-subtle bg-base/70 px-4 backdrop-blur-md sm:px-6"
+      className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-subtle bg-base/70 px-4 backdrop-blur-md sm:px-6"
     >
       <Image
         src="/linea-grafica-patria/assets/escudo-colombia.png"

@@ -1,0 +1,243 @@
+// Lo cualitativo: las narrativas (síntesis vigentes) de un territorio y su generalidad.
+//
+// La generalidad NO la escribe un modelo: sale de contar. Qué temas predominan, qué
+// relatos se repiten y qué términos aparecen en el territorio más que en el país.
+// Así cualquiera puede verificarla contra la tabla que tiene debajo.
+
+import { enTerritorio, type Filtrados } from "./agregar";
+import { SIN_TEMA } from "./catalogos";
+import type { AporteResumen, DatosTablero, NarrativaResumen } from "./tipos";
+
+export type FilaNarrativa = NarrativaResumen & { aporte: AporteResumen; cuerpo: string };
+
+export type GrupoNarrativo = {
+  clave: string;
+  cuerpo: string;
+  veces: number;
+  temas: string[];
+  municipios: string[];
+  ultima: string;
+  confirmadas: number;
+};
+
+export type Termino = { termino: string; veces: number; peso: number };
+
+export type Generalidad = {
+  total: number;
+  distintas: number;
+  confirmadas: number;
+  sinClasificar: number;
+  /** porcentaje sobre las narrativas CON tema: las sin clasificar se informan aparte. */
+  temas: { tema: string; total: number; porcentaje: number }[];
+  recurrentes: GrupoNarrativo[];
+  terminos: Termino[];
+};
+
+const SUFIJO_CORRECCION = /\s*\(corregido por quien lo contó\)\s*$/i;
+
+/** "Salud en Concepción: El puesto…" → "El puesto…". El tema y el lugar ya son columnas. */
+export function cuerpoDe(texto: string): string {
+  const limpio = texto.replace(SUFIJO_CORRECCION, "").trim();
+  const i = limpio.indexOf(": ");
+  return i > 0 && i < 90 ? limpio.slice(i + 2) : limpio;
+}
+
+export const normalizar = (s: string) =>
+  s.toLocaleLowerCase("es-CO").normalize("NFD").replace(/\p{Diacritic}/gu, "");
+
+/** Narrativas de los aportes filtrados que caen en el territorio (`null` = país), más recientes primero. */
+export function narrativasDe(
+  datos: DatosTablero,
+  filtrados: Filtrados,
+  codigo: string | null,
+): FilaNarrativa[] {
+  const aportes = new Map(filtrados.aportes.map((a) => [a.id, a]));
+  const filas: FilaNarrativa[] = [];
+  for (const n of datos.narrativas) {
+    const aporte = aportes.get(n.aporteId);
+    if (!aporte || !enTerritorio(aporte.municipios, codigo)) continue;
+    filas.push({ ...n, aporte, cuerpo: cuerpoDe(n.texto) });
+  }
+  return filas.sort((a, b) => b.aporte.fecha.localeCompare(a.aporte.fecha));
+}
+
+const porFrecuencia = (conteo: Map<string, number>) =>
+  [...conteo.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+
+/** Relatos iguales juntos: cuántas veces, en qué temas y municipios del territorio. */
+export function agruparNarrativas(filas: FilaNarrativa[], codigo: string | null): GrupoNarrativo[] {
+  const grupos = new Map<
+    string,
+    { cuerpo: string; filas: FilaNarrativa[]; temas: Map<string, number>; municipios: Map<string, number> }
+  >();
+  for (const f of filas) {
+    const clave = normalizar(f.cuerpo).replace(/[^\p{L}\p{N} ]/gu, "").trim();
+    let g = grupos.get(clave);
+    if (!g) {
+      g = { cuerpo: f.cuerpo, filas: [], temas: new Map(), municipios: new Map() };
+      grupos.set(clave, g);
+    }
+    g.filas.push(f);
+    const tema = f.aporte.tema ?? SIN_TEMA;
+    g.temas.set(tema, (g.temas.get(tema) ?? 0) + 1);
+    for (const m of f.aporte.municipios)
+      if (codigo === null || m.startsWith(codigo)) g.municipios.set(m, (g.municipios.get(m) ?? 0) + 1);
+  }
+  return [...grupos.entries()]
+    .map(([clave, g]) => ({
+      clave,
+      cuerpo: g.cuerpo,
+      veces: g.filas.length,
+      temas: porFrecuencia(g.temas),
+      municipios: porFrecuencia(g.municipios),
+      ultima: g.filas.reduce((u, f) => (f.aporte.fecha > u ? f.aporte.fecha : u), ""),
+      confirmadas: g.filas.filter((f) => f.confirmada).length,
+    }))
+    .sort((a, b) => b.veces - a.veces || b.ultima.localeCompare(a.ultima));
+}
+
+// Palabras que no dicen de qué se habla. Las de menos de 3 letras se descartan solas.
+const VACIAS = new Set(
+  (
+    "que los las del por con sin una uno unos unas hay nos les son era fue muy mas ese esa eso " +
+    "esto este esta estos estas esos esas para pero porque cuando donde desde hasta hace hacen " +
+    "sobre entre cada como todo toda todos todas otro otra otros otras mismo misma solo tambien " +
+    "tiene tienen tenemos esta estan estamos ser sido han has hemos toca tocar quien quienes " +
+    "nadie nada algo alguien sus nuestro nuestra nuestros nuestras ellos ellas ahora aqui alla " +
+    "ya asi dia dias vez veces bien mal tan tanto sigue siguen puede pueden queda quedo llega " +
+    "llegan lleva van hacer dos tres cual cuales mientras aunque despues antes luego ademas " +
+    "ninguna ninguno ningun hubo habia haber sea sean fueron estaba estaban dice dicen pasa " +
+    "pasan pone ponen gente vamos"
+  ).split(" "),
+);
+// Solo "de"/"del" arman pares con sentido ("puesto de salud", "capital del departamento").
+// Dos palabras seguidas sin conector dan pares como "salud abre", que no dicen nada.
+const CONECTORES = new Set(["de", "del"]);
+
+type Documento = Map<string, string>; // clave normalizada → forma legible
+
+function terminosDe(texto: string): Documento {
+  const doc: Documento = new Map();
+  const palabras = texto.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  let previa: string | null = null;
+  let hueco: string[] = [];
+
+  for (const forma of palabras) {
+    const clave = normalizar(forma);
+    if (CONECTORES.has(clave)) {
+      if (previa && hueco.length === 0) hueco.push(forma.toLowerCase());
+      else previa = null;
+      continue;
+    }
+    if (clave.length < 3 || VACIAS.has(clave) || /^\d+$/.test(clave)) {
+      previa = null;
+      hueco = [];
+      continue;
+    }
+    const legible = forma.toLocaleLowerCase("es-CO");
+    doc.set(clave, legible);
+    if (previa && hueco.length === 1) {
+      const par = [previa, ...hueco, legible].join(" ");
+      doc.set(normalizar(par), par);
+    }
+    previa = legible;
+    hueco = [];
+  }
+  return doc;
+}
+
+/**
+ * Términos que caracterizan las filas frente a una referencia (el país con los mismos filtros).
+ *
+ * Se cuentan por RELATO DISTINTO, no por narrativa: un mismo relato repetido 30 veces aportaría
+ * todas sus palabras con el mismo peso y el resultado repetiría la lista de relatos. Así ganan
+ * los términos que atraviesan varios relatos.
+ * peso = relatos con el término × log2(1 + cuánto más frecuente es aquí que en la referencia).
+ */
+export function terminosClave(
+  filas: FilaNarrativa[],
+  referencia: FilaNarrativa[],
+  maximo = 8,
+): Termino[] {
+  const contar = (lista: FilaNarrativa[]) => {
+    const relatos = new Map<string, { cuerpo: string; veces: number }>();
+    for (const f of lista) {
+      const clave = normalizar(f.cuerpo);
+      const r = relatos.get(clave);
+      if (r) r.veces++;
+      else relatos.set(clave, { cuerpo: f.cuerpo, veces: 1 });
+    }
+    const conteo = new Map<string, { forma: string; relatos: number; narrativas: number }>();
+    for (const { cuerpo, veces } of relatos.values())
+      for (const [clave, forma] of terminosDe(cuerpo)) {
+        const c = conteo.get(clave);
+        if (c) {
+          c.relatos++;
+          c.narrativas += veces;
+        } else conteo.set(clave, { forma, relatos: 1, narrativas: veces });
+      }
+    return { conteo, relatos: relatos.size };
+  };
+  if (!filas.length) return [];
+
+  const aqui = contar(filas);
+  const alla = contar(referencia);
+  const minimo = aqui.relatos >= 4 ? 2 : 1;
+
+  const candidatos = [...aqui.conteo.entries()]
+    .filter(([, c]) => c.relatos >= minimo && (filas.length < 6 || c.narrativas >= 2))
+    .map(([clave, c]) => {
+      const enReferencia = alla.conteo.get(clave)?.relatos ?? c.relatos;
+      const lift = c.relatos / aqui.relatos / (enReferencia / Math.max(alla.relatos, 1));
+      const esPar = clave.includes(" ");
+      return {
+        clave,
+        termino: c.forma,
+        veces: c.narrativas,
+        // Desempate por narrativas: entre dos términos igual de transversales, el más dicho.
+        peso: c.relatos * Math.log2(1 + lift) * (esPar ? 1.35 : 1) + c.narrativas / 1e4,
+      };
+    })
+    .sort((a, b) => b.peso - a.peso);
+
+  // Sin repetir: si "puesto de salud" entra, "puesto" y "salud" sobran.
+  const elegidos: typeof candidatos = [];
+  const contiene = (a: string, b: string) => ` ${a} `.includes(` ${b} `);
+  for (const c of candidatos) {
+    if (elegidos.some((e) => contiene(e.clave, c.clave) || contiene(c.clave, e.clave))) continue;
+    elegidos.push(c);
+    if (elegidos.length === maximo) break;
+  }
+  const max = elegidos[0]?.peso ?? 1;
+  return elegidos.map(({ termino, veces, peso }) => ({ termino, veces, peso: peso / max }));
+}
+
+export function generalidad(
+  filas: FilaNarrativa[],
+  referencia: FilaNarrativa[],
+  codigo: string | null,
+): Generalidad {
+  const grupos = agruparNarrativas(filas, codigo);
+  const temas = new Map<string, number>();
+  for (const f of filas) {
+    const t = f.aporte.tema ?? SIN_TEMA;
+    temas.set(t, (temas.get(t) ?? 0) + 1);
+  }
+  return {
+    total: filas.length,
+    distintas: grupos.length,
+    confirmadas: filas.filter((f) => f.confirmada).length,
+    sinClasificar: temas.get(SIN_TEMA) ?? 0,
+    temas: [...temas.entries()]
+      .filter(([t]) => t !== SIN_TEMA)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([tema, total]) => ({
+        tema,
+        total,
+        porcentaje: (total * 100) / Math.max(filas.length - (temas.get(SIN_TEMA) ?? 0), 1),
+      })),
+    recurrentes: grupos.slice(0, 3),
+    terminos: terminosClave(filas, referencia),
+  };
+}

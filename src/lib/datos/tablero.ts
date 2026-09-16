@@ -10,6 +10,7 @@ import type {
   EtapaAlerta,
   ExpedienteResumen,
   Indicadores,
+  NarrativaResumen,
 } from "./tipos";
 
 type Cliente = ReturnType<typeof clienteServidor>;
@@ -35,10 +36,11 @@ async function todas<T>(
   }
 }
 
-const mesBogota = new Intl.DateTimeFormat("en-CA", {
+const fechaBogota = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/Bogota",
   year: "numeric",
   month: "2-digit",
+  day: "2-digit",
 });
 
 function agruparPor<T, K>(filas: T[], clave: (f: T) => K): Map<K, T[]> {
@@ -76,6 +78,13 @@ type FilaAlerta = {
   recepcion_confirmada_en: string | null;
   devuelta_en: string | null;
 };
+type FilaSintesis = {
+  aporte_id: string;
+  version: number;
+  texto: string;
+  clase: NarrativaResumen["clase"];
+  confirmada_en: string | null;
+};
 type FilaTerritorio = {
   codigo: string;
   nombre: string;
@@ -101,7 +110,7 @@ export async function obtenerTablero(): Promise<DatosTablero> {
 
   const delProceso = (q: any) => q.eq("proceso_id", proceso.id); // eslint-disable-line @typescript-eslint/no-explicit-any
 
-  const [territorios, aportes, ubicaciones, vinculos, expTerr, actuaciones, alertas, control] =
+  const [territorios, aportes, ubicaciones, vinculos, expTerr, actuaciones, alertas, sintesis, control] =
     await Promise.all([
       todas<FilaTerritorio>(
         sb,
@@ -135,6 +144,13 @@ export async function obtenerTablero(): Promise<DatosTablero> {
         sb,
         "alerta",
         "id,aporte_id,orientacion_mostrada_en,contacto_intentado_en,recepcion_confirmada_en,devuelta_en",
+        ["id"],
+        delProceso,
+      ),
+      todas<FilaSintesis>(
+        sb,
+        "sintesis",
+        "aporte_id,version,texto,clase,confirmada_en",
         ["id"],
         delProceso,
       ),
@@ -177,11 +193,13 @@ export async function obtenerTablero(): Promise<DatosTablero> {
     if (muni.length) ubicacion = "confirmada";
     else if (ubs.length)
       ubicacion = [...ubs].sort((x, y) => y.creada_en.localeCompare(x.creada_en))[0].estado;
+    const fecha = fechaBogota.format(new Date(a.recibido_en));
     return {
       id: a.id,
       tema: a.tema,
       canal: a.canal,
-      mes: mesBogota.format(new Date(a.recibido_en)).slice(0, 7),
+      mes: fecha.slice(0, 7),
+      fecha,
       colectivo: a.es_colectivo,
       ubicacion,
       municipios: muni,
@@ -241,6 +259,21 @@ export async function obtenerTablero(): Promise<DatosTablero> {
       };
     });
 
+  // Narrativas: la síntesis vigente (última versión) de cada aporte del universo.
+  const vigentes = new Map<string, FilaSintesis>();
+  for (const s of sintesis) {
+    if (!aportePorId.has(s.aporte_id)) continue;
+    const actual = vigentes.get(s.aporte_id);
+    if (!actual || s.version > actual.version) vigentes.set(s.aporte_id, s);
+  }
+  const narrativas: NarrativaResumen[] = [...vigentes.values()].map((s) => ({
+    aporteId: s.aporte_id,
+    texto: s.texto,
+    version: s.version,
+    clase: s.clase,
+    confirmada: s.confirmada_en !== null,
+  }));
+
   return {
     proceso,
     catalogoVersion,
@@ -248,6 +281,7 @@ export async function obtenerTablero(): Promise<DatosTablero> {
     aportes: aportesResumen,
     expedientes,
     alertas: alertasResumen,
+    narrativas,
     departamentos,
     municipios,
     control,

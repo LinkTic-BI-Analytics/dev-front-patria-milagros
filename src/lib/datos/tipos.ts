@@ -15,6 +15,8 @@ export type AporteResumen = {
   canal: Canal;
   /** YYYY-MM en hora de Bogotá */
   mes: string;
+  /** YYYY-MM-DD en hora de Bogotá */
+  fecha: string;
   colectivo: boolean;
   ubicacion: EstadoUbicacion;
   /** Municipios confirmados (código DIVIPOLA de 5 dígitos) */
@@ -38,6 +40,16 @@ export type AlertaResumen = {
   devuelta: boolean;
 };
 
+/** La síntesis vigente de un aporte: la última versión, que es la que manda. */
+export type NarrativaResumen = {
+  aporteId: string;
+  texto: string;
+  version: number;
+  clase: "propuesta" | "mal_interpretado" | "cambio_de_posicion";
+  /** La persona confirmó su síntesis. No significa que los hechos estén verificados. */
+  confirmada: boolean;
+};
+
 export type Territorio = { nombre: string; lat: number | null; lon: number | null };
 
 export type Indicadores = {
@@ -56,6 +68,7 @@ export type DatosTablero = {
   aportes: AporteResumen[];
   expedientes: ExpedienteResumen[];
   alertas: AlertaResumen[];
+  narrativas: NarrativaResumen[];
   departamentos: Record<string, Territorio>;
   municipios: Record<string, Territorio & { tipo: string | null }>;
   /** Salida del RPC `indicadores`: la cuenta oficial para contrastar. */

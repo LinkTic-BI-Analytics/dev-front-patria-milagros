@@ -306,6 +306,13 @@ export default function MapaColombia(props: Props) {
       zoom: 1.15,
       doubleClickZoom: false,
       attributionControl: false,
+      // La página tiene scroll (narrativas debajo): el zoom con rueda pide Ctrl/⌘.
+      cooperativeGestures: true,
+      locale: {
+        "ScrollZoomBlocker.CtrlMessage": "Use Ctrl + rueda para acercar el mapa",
+        "ScrollZoomBlocker.CmdMessage": "Use ⌘ + rueda para acercar el mapa",
+        "TouchPanBlocker.Message": "Use dos dedos para mover el mapa",
+      },
       maxPitch: 65,
     });
     mapaRef.current = map;

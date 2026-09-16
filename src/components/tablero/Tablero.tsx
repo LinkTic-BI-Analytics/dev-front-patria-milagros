@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { BadgeCheck, Keyboard, MapPin, MousePointerClick, X } from "lucide-react";
+import { ArrowDown, BadgeCheck, Keyboard, MapPin, MousePointerClick, X } from "lucide-react";
 import {
   METRICAS,
   SIN_TEMA,
@@ -16,6 +16,7 @@ import type { DatosTablero } from "@/lib/datos/tipos";
 import { Encabezado } from "./Encabezado";
 import { BarraFiltros, MigaTerritorio, SelectorMetrica } from "./ControlesMapa";
 import { TarjetasKpi } from "./TarjetasKpi";
+import { Narrativas } from "./Narrativas";
 import {
   EstadoAtencionBarra,
   GraficaEvolucion,
@@ -112,75 +113,95 @@ export function Tablero({ datos }: { datos: DatosTablero }) {
       : "País";
 
   return (
-    <div className="flex min-h-dvh flex-col lg:h-dvh">
+    <div className="flex min-h-dvh flex-col">
       <Encabezado proceso={datos.proceso.nombre} actualizadoEn={datos.actualizadoEn} />
 
-      <main className="grid min-h-0 flex-1 gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_25rem] xl:grid-cols-[minmax(0,1fr)_28rem]">
-        {/* ── Mapa: el protagonista ── */}
-        <motion.section
-          initial={{ opacity: 0, scale: 0.985 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.9, ease: suave }}
-          className="relative h-[72vh] min-h-[28rem] overflow-hidden rounded-lg border border-subtle bg-[#040C1D] shadow-[var(--shadow-deep)] lg:h-auto"
-          aria-label="Mapa de Colombia"
-        >
-          <MapaColombia
-            valores={valores}
-            metrica={metrica}
-            departamento={departamento}
-            seleccion={seleccion}
-            modo3d={modo3d}
-            departamentos={datos.departamentos}
-            municipios={datos.municipios}
-            onSeleccionar={setSeleccion}
-            onEntrar={entrar}
-            onSalir={salir}
-          />
-
-          {/* Marco y viñeta */}
-          <div className="pointer-events-none absolute inset-0 rounded-lg shadow-[inset_0_0_120px_rgba(3,8,20,.85)]" />
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold-500/70 to-transparent" />
-
-          {/* Controles superiores */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col gap-2 p-3 sm:p-4">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <MigaTerritorio
-                departamento={departamento}
-                nombreDepto={departamento ? nombre(departamento) : ""}
-                municipios={municipiosDelDepto}
-                onSalir={salir}
-              />
-              <SelectorMetrica
-                metrica={metrica}
-                onCambiar={setMetrica}
-                modo3d={modo3d}
-                onModo3d={() => setModo3d((v) => !v)}
-              />
-            </div>
-            <BarraFiltros filtros={filtros} onCambiar={setFiltros} conteoTemas={conteoTemas} />
-          </div>
-
-          {/* Pista de interacción */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 4.2, duration: 0.6 }}
-            className="vidrio pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 items-center gap-4 rounded-full px-4 py-2 text-xs whitespace-nowrap text-secondary 2xl:flex"
+      <main className="grid flex-1 items-start gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_25rem] xl:grid-cols-[minmax(0,1fr)_28rem]">
+        <div className="flex min-w-0 flex-col gap-3">
+          {/* ── Mapa: el protagonista ── */}
+          <motion.section
+            initial={{ opacity: 0, scale: 0.985 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.9, ease: suave }}
+            className="relative h-[72vh] min-h-[28rem] overflow-hidden rounded-lg border border-subtle bg-[#040C1D] shadow-[var(--shadow-deep)] lg:h-[calc(100dvh-7.75rem)]"
+            aria-label="Mapa de Colombia"
           >
-            <span className="flex items-center gap-1.5">
-              <MousePointerClick className="size-3.5 text-accent" /> Clic: seleccionar
-            </span>
-            <span className="flex items-center gap-1.5">
-              <MapPin className="size-3.5 text-accent" /> Doble clic: explorar municipios
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Keyboard className="size-3.5 text-accent" /> Esc: vista nacional
-            </span>
-          </motion.div>
-        </motion.section>
+            <MapaColombia
+              valores={valores}
+              metrica={metrica}
+              departamento={departamento}
+              seleccion={seleccion}
+              modo3d={modo3d}
+              departamentos={datos.departamentos}
+              municipios={datos.municipios}
+              onSeleccionar={setSeleccion}
+              onEntrar={entrar}
+              onSalir={salir}
+            />
+
+            {/* Marco y viñeta */}
+            <div className="pointer-events-none absolute inset-0 rounded-lg shadow-[inset_0_0_120px_rgba(3,8,20,.85)]" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold-500/70 to-transparent" />
+
+            {/* Controles superiores */}
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col gap-2 p-3 sm:p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <MigaTerritorio
+                  departamento={departamento}
+                  nombreDepto={departamento ? nombre(departamento) : ""}
+                  municipios={municipiosDelDepto}
+                  onSalir={salir}
+                />
+                <SelectorMetrica
+                  metrica={metrica}
+                  onCambiar={setMetrica}
+                  modo3d={modo3d}
+                  onModo3d={() => setModo3d((v) => !v)}
+                />
+              </div>
+              <BarraFiltros filtros={filtros} onCambiar={setFiltros} conteoTemas={conteoTemas} />
+            </div>
+
+            {/* Pista de interacción y acceso a lo cualitativo */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 4.2, duration: 0.6 }}
+              className="vidrio pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-4 rounded-full py-1.5 pr-1.5 pl-4 text-xs whitespace-nowrap text-secondary sm:bottom-6"
+            >
+              <span className="hidden items-center gap-1.5 2xl:flex">
+                <MousePointerClick className="size-3.5 text-accent" /> Clic: seleccionar
+              </span>
+              <span className="hidden items-center gap-1.5 2xl:flex">
+                <MapPin className="size-3.5 text-accent" /> Doble clic: explorar municipios
+              </span>
+              <span className="hidden items-center gap-1.5 2xl:flex">
+                <Keyboard className="size-3.5 text-accent" /> Esc: vista nacional
+              </span>
+              <button
+                onClick={() =>
+                  document.getElementById("narrativas")?.scrollIntoView({ behavior: "smooth" })
+                }
+                className="group pointer-events-auto flex items-center gap-1.5 rounded-full bg-action-primary px-3 py-1.5 font-bold text-action-primary-text shadow-glow-gold transition-transform hover:-translate-y-px"
+              >
+                Ver narrativas
+                <ArrowDown className="size-3.5 transition-transform group-hover:translate-y-0.5" />
+              </button>
+            </motion.div>
+          </motion.section>
+
+          {/* ── Lo cualitativo: narrativas bajo el mapa ── */}
+          <Narrativas
+            datos={datos}
+            filtrados={filtrados}
+            filtros={filtros}
+            codigo={codigo}
+            nombreTerritorio={codigo ? nombre(codigo) : "Colombia"}
+          />
+        </div>
 
         {/* ── Panel territorial ── */}
-        <aside className="scroll-fino flex min-h-0 flex-col gap-3 lg:overflow-y-auto lg:pr-1 [&>*]:shrink-0">
+        <aside className="scroll-fino flex flex-col gap-3 lg:sticky lg:top-[4.75rem] lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1 [&>*]:shrink-0">
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
