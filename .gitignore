@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# documento confidencial: solo en el equipo local, nunca al repositorio
+/top_secret/*.pdf

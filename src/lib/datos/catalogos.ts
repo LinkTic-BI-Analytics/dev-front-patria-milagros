@@ -1,24 +1,31 @@
 import {
-  BriefcaseBusiness,
+  Building2,
+  Bus,
+  ChartColumn,
   CircleDashed,
-  Droplets,
+  Coins,
+  Compass,
+  Earth,
+  Flag,
+  FlaskConical,
   Globe,
   GraduationCap,
   HandHeart,
   Handshake,
+  HardHat,
   HeartPulse,
-  House,
+  IdCard,
+  Landmark,
   Leaf,
   Mic,
   Palette,
-  PawPrint,
-  Route,
   Scale,
-  ShieldCheck,
+  ScanEye,
   Shapes,
+  Shield,
+  Store,
   Tractor,
-  Trash2,
-  Users,
+  Trophy,
   Wifi,
   Zap,
   type LucideIcon,
@@ -27,30 +34,61 @@ import type { Canal, EstadoAtencion, EtapaAlerta } from "./tipos";
 
 export const SIN_TEMA = "sin_tema";
 
-// Lista provisional de la base (`tema_de_la_lista`): así se dice en pantalla.
-export const TEMAS: Record<string, { etiqueta: string; icono: LucideIcon }> = {
-  agua: { etiqueta: "Agua", icono: Droplets },
-  vias: { etiqueta: "Vías", icono: Route },
-  salud: { etiqueta: "Salud", icono: HeartPulse },
-  educacion: { etiqueta: "Educación", icono: GraduationCap },
-  energia: { etiqueta: "Energía", icono: Zap },
-  residuos: { etiqueta: "Residuos", icono: Trash2 },
-  conectividad: { etiqueta: "Conectividad", icono: Wifi },
-  vivienda: { etiqueta: "Vivienda", icono: House },
-  ambiente: { etiqueta: "Ambiente", icono: Leaf },
-  seguridad: { etiqueta: "Seguridad", icono: ShieldCheck },
-  mujeres: { etiqueta: "Mujeres", icono: Users },
-  campo: { etiqueta: "Campo", icono: Tractor },
-  empleo: { etiqueta: "Empleo", icono: BriefcaseBusiness },
-  apoyo: { etiqueta: "Apoyo social", icono: HandHeart },
-  justicia: { etiqueta: "Justicia", icono: Scale },
-  cultura: { etiqueta: "Cultura", icono: Palette },
-  animales: { etiqueta: "Animales", icono: PawPrint },
-  otro: { etiqueta: "Otro", icono: Shapes },
-  [SIN_TEMA]: { etiqueta: "Sin clasificar", icono: CircleDashed },
+type Tema = { etiqueta: string; corta: string; icono: LucideIcon };
+
+// Los 24 sectores del Gobierno nacional. La base guarda la etiqueta oficial completa;
+// aquí la clave es un slug estable y `corta` sirve donde no cabe el nombre entero.
+export const TEMAS: Record<string, Tema> = {
+  salud_proteccion_social: { etiqueta: "Salud y Protección Social", corta: "Salud", icono: HeartPulse },
+  vivienda_ciudad_territorio: { etiqueta: "Vivienda, Ciudad y Territorio", corta: "Vivienda y territorio", icono: Building2 },
+  transporte: { etiqueta: "Transporte", corta: "Transporte", icono: Bus },
+  educacion: { etiqueta: "Educación", corta: "Educación", icono: GraduationCap },
+  ambiente_desarrollo_sostenible: { etiqueta: "Ambiente y Desarrollo Sostenible", corta: "Ambiente", icono: Leaf },
+  defensa: { etiqueta: "Defensa", corta: "Defensa", icono: Shield },
+  agricultura_desarrollo_rural: { etiqueta: "Agricultura y Desarrollo Rural", corta: "Agricultura", icono: Tractor },
+  comercio_industria_turismo: { etiqueta: "Comercio, Industria y Turismo", corta: "Comercio e industria", icono: Store },
+  minas_energia: { etiqueta: "Minas y Energía", corta: "Minas y energía", icono: Zap },
+  inclusion_social_reconciliacion: { etiqueta: "Inclusión Social y Reconciliación", corta: "Inclusión social", icono: HandHeart },
+  presidencia: { etiqueta: "Presidencia de la República", corta: "Presidencia", icono: Landmark },
+  tic: { etiqueta: "Tecnologías de la Información y la Comunicación", corta: "TIC", icono: Wifi },
+  deporte_recreacion: { etiqueta: "Deporte y Recreación", corta: "Deporte", icono: Trophy },
+  justicia: { etiqueta: "Justicia", corta: "Justicia", icono: Scale },
+  culturas: { etiqueta: "Culturas", corta: "Culturas", icono: Palette },
+  interior: { etiqueta: "Interior", corta: "Interior", icono: Flag },
+  relaciones_exteriores: { etiqueta: "Relaciones Exteriores", corta: "Relaciones exteriores", icono: Earth },
+  funcion_publica: { etiqueta: "Función Pública", corta: "Función pública", icono: IdCard },
+  hacienda: { etiqueta: "Hacienda", corta: "Hacienda", icono: Coins },
+  ciencia_tecnologia_innovacion: { etiqueta: "Ciencia, Tecnología e Innovación", corta: "Ciencia y tecnología", icono: FlaskConical },
+  planeacion: { etiqueta: "Planeación", corta: "Planeación", icono: Compass },
+  trabajo: { etiqueta: "Trabajo", corta: "Trabajo", icono: HardHat },
+  estadistica: { etiqueta: "Estadística", corta: "Estadística", icono: ChartColumn },
+  inteligencia: { etiqueta: "Inteligencia", corta: "Inteligencia", icono: ScanEye },
+  [SIN_TEMA]: { etiqueta: "Sin clasificar", corta: "Sin clasificar", icono: CircleDashed },
 };
 
-export const temaDe = (tema: string | null) => TEMAS[tema ?? SIN_TEMA] ?? TEMAS.otro;
+/** Letras y números sin tildes: "Salud y Protección Social" y "salud_y_proteccion_social" coinciden. */
+const compacto = (s: string) =>
+  s.toLocaleLowerCase("es-CO").normalize("NFD").replace(/[^a-z0-9]/g, "");
+
+const TEMA_POR_FORMA = new Map<string, string>();
+for (const [clave, { etiqueta }] of Object.entries(TEMAS)) {
+  TEMA_POR_FORMA.set(compacto(clave), clave);
+  TEMA_POR_FORMA.set(compacto(etiqueta), clave);
+}
+
+/**
+ * El tema tal como lo guarda la base → clave del catálogo. Acepta la etiqueta oficial o un slug.
+ * Un valor que no está en el catálogo se conserva tal cual (y `temaDe` lo muestra así).
+ */
+export function resolverTema(valor: string | null): string | null {
+  if (valor === null || !valor.trim()) return null;
+  return TEMA_POR_FORMA.get(compacto(valor)) ?? valor.trim();
+}
+
+export const temaReconocido = (tema: string | null) => tema === null || tema in TEMAS;
+
+export const temaDe = (tema: string | null): Tema =>
+  TEMAS[tema ?? SIN_TEMA] ?? { etiqueta: tema ?? "", corta: tema ?? "", icono: Shapes };
 
 export const CANALES: Record<Canal, { etiqueta: string; icono: LucideIcon; color: string }> = {
   // Orden fijo y validado (CVD) sobre la superficie navy: dorado · azul · rojo.

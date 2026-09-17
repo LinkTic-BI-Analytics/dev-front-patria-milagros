@@ -160,9 +160,11 @@ export function BarraFiltros({
     lista.includes(valor) ? lista.filter((x) => x !== valor) : [...lista, valor];
 
   const activos = filtros.temas.length + filtros.canales.length;
-  const ordenTemas = Object.keys(TEMAS).sort((a, b) =>
-    a === SIN_TEMA ? 1 : b === SIN_TEMA ? -1 : (conteoTemas[b] ?? 0) - (conteoTemas[a] ?? 0),
-  );
+  const ordenTemas = Object.keys(TEMAS)
+    .filter((t) => t !== SIN_TEMA || (conteoTemas[t] ?? 0) > 0)
+    .sort((a, b) =>
+      a === SIN_TEMA ? 1 : b === SIN_TEMA ? -1 : (conteoTemas[b] ?? 0) - (conteoTemas[a] ?? 0),
+    );
 
   return (
     <div className="pointer-events-auto flex flex-wrap items-center gap-2">
@@ -189,7 +191,7 @@ export function BarraFiltros({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -6, scale: 0.98 }}
               transition={{ duration: 0.2, ease: suave }}
-              className="absolute top-11 left-0 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-md border border-default bg-surface-3 p-3 shadow-[var(--shadow-deep)]"
+              className="absolute top-11 left-0 z-40 w-[min(26rem,calc(100vw-2rem))] rounded-md border border-default bg-surface-3 p-3 shadow-[var(--shadow-deep)]"
             >
               <div className="mb-2 flex items-center justify-between">
                 <p className="etiqueta">Filtrar por tema</p>
@@ -204,7 +206,7 @@ export function BarraFiltros({
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {ordenTemas.map((clave, i) => {
-                  const { etiqueta, icono: Icono } = TEMAS[clave];
+                  const { etiqueta, corta, icono: Icono } = TEMAS[clave];
                   const activo = filtros.temas.includes(clave);
                   return (
                     <motion.button
@@ -214,6 +216,7 @@ export function BarraFiltros({
                       transition={{ delay: i * 0.015 }}
                       onClick={() => onCambiar({ ...filtros, temas: alternar(filtros.temas, clave) })}
                       aria-pressed={activo}
+                      title={etiqueta}
                       className={`flex items-center gap-1.5 rounded-xs border px-2 py-1 text-xs transition-all ${
                         activo
                           ? "border-gold-500 bg-[rgba(255,200,0,.14)] text-primary"
@@ -221,7 +224,7 @@ export function BarraFiltros({
                       }`}
                     >
                       <Icono className={`size-3.5 ${activo ? "text-accent" : ""}`} />
-                      {etiqueta}
+                      {corta}
                       <span className="cifra text-[10px] text-muted">
                         {formatoNumero(conteoTemas[clave] ?? 0)}
                       </span>
@@ -230,7 +233,7 @@ export function BarraFiltros({
                 })}
               </div>
               <p className="mt-3 text-[11px] leading-snug text-muted">
-                Lista de temas provisional: la taxonomía aún no está cerrada.
+                Temas por sector del Gobierno nacional.
               </p>
             </motion.div>
           )}

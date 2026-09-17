@@ -48,6 +48,20 @@ export type NarrativaResumen = {
   clase: "propuesta" | "mal_interpretado" | "cambio_de_posicion";
   /** La persona confirmó su síntesis. No significa que los hechos estén verificados. */
   confirmada: boolean;
+  /** Línea del PND con la que se relaciona (si el módulo está disponible y hubo coincidencia). */
+  pnd: { linea: string; eje: string; claves: string[] } | null;
+};
+
+/** Lo que llega al navegador del catálogo del PND: nombres, sin vocabulario de búsqueda. */
+export type PndResumen = {
+  fuente: string;
+  ejes: {
+    id: string;
+    numero: number;
+    nombre: string;
+    vision: string;
+    lineas: { id: string; nombre: string }[];
+  }[];
 };
 
 export type Territorio = { nombre: string; lat: number | null; lon: number | null };
@@ -69,6 +83,8 @@ export type DatosTablero = {
   expedientes: ExpedienteResumen[];
   alertas: AlertaResumen[];
   narrativas: NarrativaResumen[];
+  /** `null` cuando el catálogo del PND no está disponible: el módulo no se muestra. */
+  pnd: PndResumen | null;
   departamentos: Record<string, Territorio>;
   municipios: Record<string, Territorio & { tipo: string | null }>;
   /** Salida del RPC `indicadores`: la cuenta oficial para contrastar. */

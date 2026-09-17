@@ -6,7 +6,7 @@
 
 import { enTerritorio, type Filtrados } from "./agregar";
 import { SIN_TEMA } from "./catalogos";
-import type { AporteResumen, DatosTablero, NarrativaResumen } from "./tipos";
+import type { AporteResumen, DatosTablero, NarrativaResumen, PndResumen } from "./tipos";
 
 export type FilaNarrativa = NarrativaResumen & { aporte: AporteResumen; cuerpo: string };
 
@@ -18,6 +18,8 @@ export type GrupoNarrativo = {
   municipios: string[];
   ultima: string;
   confirmadas: number;
+  /** Línea del PND más frecuente entre sus narrativas (`null` si ninguna se relaciona). */
+  pnd: string | null;
 };
 
 export type Termino = { termino: string; veces: number; peso: number };
@@ -68,18 +70,25 @@ const porFrecuencia = (conteo: Map<string, number>) =>
 export function agruparNarrativas(filas: FilaNarrativa[], codigo: string | null): GrupoNarrativo[] {
   const grupos = new Map<
     string,
-    { cuerpo: string; filas: FilaNarrativa[]; temas: Map<string, number>; municipios: Map<string, number> }
+    {
+      cuerpo: string;
+      filas: FilaNarrativa[];
+      temas: Map<string, number>;
+      municipios: Map<string, number>;
+      lineas: Map<string, number>;
+    }
   >();
   for (const f of filas) {
     const clave = normalizar(f.cuerpo).replace(/[^\p{L}\p{N} ]/gu, "").trim();
     let g = grupos.get(clave);
     if (!g) {
-      g = { cuerpo: f.cuerpo, filas: [], temas: new Map(), municipios: new Map() };
+      g = { cuerpo: f.cuerpo, filas: [], temas: new Map(), municipios: new Map(), lineas: new Map() };
       grupos.set(clave, g);
     }
     g.filas.push(f);
     const tema = f.aporte.tema ?? SIN_TEMA;
     g.temas.set(tema, (g.temas.get(tema) ?? 0) + 1);
+    if (f.pnd) g.lineas.set(f.pnd.linea, (g.lineas.get(f.pnd.linea) ?? 0) + 1);
     for (const m of f.aporte.municipios)
       if (codigo === null || m.startsWith(codigo)) g.municipios.set(m, (g.municipios.get(m) ?? 0) + 1);
   }
@@ -92,6 +101,7 @@ export function agruparNarrativas(filas: FilaNarrativa[], codigo: string | null)
       municipios: porFrecuencia(g.municipios),
       ultima: g.filas.reduce((u, f) => (f.aporte.fecha > u ? f.aporte.fecha : u), ""),
       confirmadas: g.filas.filter((f) => f.confirmada).length,
+      pnd: porFrecuencia(g.lineas)[0] ?? null,
     }))
     .sort((a, b) => b.veces - a.veces || b.ultima.localeCompare(a.ultima));
 }
@@ -239,5 +249,82 @@ export function generalidad(
       })),
     recurrentes: grupos.slice(0, 3),
     terminos: terminosClave(filas, referencia),
+  };
+}
+
+export type LineaConVoces = {
+  id: string;
+  nombre: string;
+  eje: { id: string; numero: number; nombre: string };
+  total: number;
+  relato: string;
+  veces: number;
+  claves: string[];
+};
+
+export type AlineacionPnd = {
+  total: number;
+  relacionadas: number;
+  ejes: { id: string; numero: number; nombre: string; vision: string; total: number; porcentaje: number }[];
+  lineas: LineaConVoces[];
+  sinRelacion: { total: number; porcentaje: number; relato: string | null; veces: number };
+};
+
+/**
+ * Cómo se reparten las narrativas entre los ejes y líneas del PND. Cada narrativa tiene a lo sumo
+ * una línea, así que los conteos por eje suman, con las "sin relación", el total.
+ */
+export function alineacionPnd(filas: FilaNarrativa[], pnd: PndResumen): AlineacionPnd {
+  const total = filas.length;
+  const pct = (n: number) => (total ? (n * 100) / total : 0);
+
+  const porLinea = new Map<string, FilaNarrativa[]>();
+  const sinRelacion: FilaNarrativa[] = [];
+  for (const f of filas) {
+    if (!f.pnd) sinRelacion.push(f);
+    else porLinea.set(f.pnd.linea, [...(porLinea.get(f.pnd.linea) ?? []), f]);
+  }
+
+  const masRepetido = (lista: FilaNarrativa[]) => agruparNarrativas(lista, null)[0] ?? null;
+
+  const lineas: LineaConVoces[] = pnd.ejes
+    .flatMap((eje) =>
+      eje.lineas.map((l) => ({ l, eje, suyas: porLinea.get(l.id) ?? [] })),
+    )
+    .filter(({ suyas }) => suyas.length > 0)
+    .map(({ l, eje, suyas }) => {
+      const grupo = masRepetido(suyas)!;
+      const claves = new Map<string, number>();
+      for (const f of suyas)
+        for (const c of f.pnd!.claves) claves.set(c, (claves.get(c) ?? 0) + 1);
+      return {
+        id: l.id,
+        nombre: l.nombre,
+        eje: { id: eje.id, numero: eje.numero, nombre: eje.nombre },
+        total: suyas.length,
+        relato: grupo.cuerpo,
+        veces: grupo.veces,
+        claves: porFrecuencia(claves).slice(0, 4),
+      };
+    })
+    .sort((a, b) => b.total - a.total);
+
+  const ejes = pnd.ejes.map(({ id, numero, nombre, vision }) => {
+    const n = filas.filter((f) => f.pnd?.eje === id).length;
+    return { id, numero, nombre, vision, total: n, porcentaje: pct(n) };
+  });
+
+  const sinGrupo = masRepetido(sinRelacion);
+  return {
+    total,
+    relacionadas: total - sinRelacion.length,
+    ejes,
+    lineas,
+    sinRelacion: {
+      total: sinRelacion.length,
+      porcentaje: pct(sinRelacion.length),
+      relato: sinGrupo?.cuerpo ?? null,
+      veces: sinGrupo?.veces ?? 0,
+    },
   };
 }

@@ -73,7 +73,7 @@ export function GraficaTemas({
   return (
     <ul className="space-y-1">
       {visibles.map(({ tema, total: n }, i) => {
-        const { etiqueta, icono: Icono } = temaDe(tema);
+        const { etiqueta, corta, icono: Icono } = temaDe(tema);
         const activo = seleccionados.includes(tema);
         return (
           <li key={tema}>
@@ -86,7 +86,7 @@ export function GraficaTemas({
             >
               <span className="flex min-w-0 items-center gap-2 text-xs text-secondary group-hover:text-primary">
                 <Icono className={`size-3.5 shrink-0 ${activo ? "text-accent" : "text-muted"}`} />
-                <span className="truncate">{etiqueta}</span>
+                <span className="truncate">{corta}</span>
               </span>
               <span className="relative h-2.5">
                 <motion.span

@@ -1,5 +1,9 @@
 import "server-only";
 import { clienteServidor } from "@/lib/supabase/servidor";
+import { crearAlineador } from "@/lib/pnd/alinear";
+import { cargarPnd } from "@/lib/pnd/cargar";
+import { resolverTema, temaReconocido } from "./catalogos";
+import { cuerpoDe } from "./narrativas";
 import type {
   AlertaResumen,
   AporteResumen,
@@ -110,8 +114,18 @@ export async function obtenerTablero(): Promise<DatosTablero> {
 
   const delProceso = (q: any) => q.eq("proceso_id", proceso.id); // eslint-disable-line @typescript-eslint/no-explicit-any
 
-  const [territorios, aportes, ubicaciones, vinculos, expTerr, actuaciones, alertas, sintesis, control] =
-    await Promise.all([
+  const [
+    territorios,
+    aportes,
+    ubicaciones,
+    vinculos,
+    expTerr,
+    actuaciones,
+    alertas,
+    sintesis,
+    control,
+    catalogoPnd,
+  ] = await Promise.all([
       todas<FilaTerritorio>(
         sb,
         "territorio",
@@ -165,6 +179,7 @@ export async function obtenerTablero(): Promise<DatosTablero> {
             }
           : null;
       }),
+      cargarPnd(),
     ]);
 
   // Catálogo: la versión más reciente manda.
@@ -180,6 +195,7 @@ export async function obtenerTablero(): Promise<DatosTablero> {
 
   // Ubicación por aporte: municipios confirmados; si no hay, el último estado.
   const ubicPorAporte = agruparPor(ubicaciones, (u) => u.aporte_id);
+  const temasDesconocidos = new Set<string>();
   const aportesResumen: AporteResumen[] = aportes.map((a) => {
     const ubs = ubicPorAporte.get(a.id) ?? [];
     const muni = [
@@ -194,9 +210,11 @@ export async function obtenerTablero(): Promise<DatosTablero> {
     else if (ubs.length)
       ubicacion = [...ubs].sort((x, y) => y.creada_en.localeCompare(x.creada_en))[0].estado;
     const fecha = fechaBogota.format(new Date(a.recibido_en));
+    const tema = resolverTema(a.tema);
+    if (!temaReconocido(tema)) temasDesconocidos.add(String(tema));
     return {
       id: a.id,
-      tema: a.tema,
+      tema,
       canal: a.canal,
       mes: fecha.slice(0, 7),
       fecha,
@@ -205,6 +223,8 @@ export async function obtenerTablero(): Promise<DatosTablero> {
       municipios: muni,
     };
   });
+  if (temasDesconocidos.size)
+    console.warn(`Temas de la base que no están en el catálogo: ${[...temasDesconocidos].join(", ")}`);
   const aportePorId = new Map(aportesResumen.map((a) => [a.id, a]));
 
   // Necesidades: expedientes con al menos un vínculo vigente a un aporte del universo (R1).
@@ -266,12 +286,19 @@ export async function obtenerTablero(): Promise<DatosTablero> {
     const actual = vigentes.get(s.aporte_id);
     if (!actual || s.version > actual.version) vigentes.set(s.aporte_id, s);
   }
+  // Relación con el PND: se calcula aquí para que el vocabulario del catálogo no salga del servidor.
+  const alinear = catalogoPnd
+    ? crearAlineador(
+        catalogoPnd.ejes.flatMap((e) => e.lineas.map((l) => ({ ...l, eje: e.id }))),
+      )
+    : null;
   const narrativas: NarrativaResumen[] = [...vigentes.values()].map((s) => ({
     aporteId: s.aporte_id,
     texto: s.texto,
     version: s.version,
     clase: s.clase,
     confirmada: s.confirmada_en !== null,
+    pnd: alinear ? alinear(cuerpoDe(s.texto), aportePorId.get(s.aporte_id)?.tema ?? null) : null,
   }));
 
   return {
@@ -282,6 +309,16 @@ export async function obtenerTablero(): Promise<DatosTablero> {
     expedientes,
     alertas: alertasResumen,
     narrativas,
+    pnd: catalogoPnd && {
+      fuente: catalogoPnd.fuente,
+      ejes: catalogoPnd.ejes.map(({ id, numero, nombre, vision, lineas }) => ({
+        id,
+        numero,
+        nombre,
+        vision,
+        lineas: lineas.map((l) => ({ id: l.id, nombre: l.nombre })),
+      })),
+    },
     departamentos,
     municipios,
     control,

@@ -21,6 +21,7 @@ import type { Filtrados, Filtros } from "@/lib/datos/agregar";
 import { CANALES, formatoNumero, nombrePropio, temaDe } from "@/lib/datos/catalogos";
 import {
   agruparNarrativas,
+  alineacionPnd,
   generalidad,
   narrativasDe,
   normalizar,
@@ -29,6 +30,7 @@ import {
   type GrupoNarrativo,
 } from "@/lib/datos/narrativas";
 import type { DatosTablero } from "@/lib/datos/tipos";
+import { AlineacionPnd, SIN_RELACION } from "./AlineacionPnd";
 
 const suave = [0.22, 1, 0.36, 1] as const;
 const POR_PAGINA = 8;
@@ -58,8 +60,9 @@ export function Narrativas({
 }) {
   const [vista, setVista] = useState<Vista>("agrupadas");
   const [busqueda, setBusqueda] = useState("");
+  const [ejePnd, setEjePnd] = useState<string | null>(null);
   // La página vuelve a 1 cuando cambia lo que se está mirando.
-  const contexto = `${codigo}|${filtros.temas.join()}|${filtros.canales.join()}|${vista}|${busqueda}`;
+  const contexto = `${codigo}|${filtros.temas.join()}|${filtros.canales.join()}|${vista}|${busqueda}|${ejePnd}`;
   const [pagina, setPagina] = useState({ contexto, n: 0 });
   const n = pagina.contexto === contexto ? pagina.n : 0;
 
@@ -74,7 +77,34 @@ export function Narrativas({
     () => generalidad(filas, referencia, codigo),
     [filas, referencia, codigo],
   );
-  const grupos = useMemo(() => agruparNarrativas(filas, codigo), [filas, codigo]);
+  const alineacion = useMemo(
+    () => (datos.pnd ? alineacionPnd(filas, datos.pnd) : null),
+    [datos.pnd, filas],
+  );
+  const lineaPorId = useMemo(
+    () =>
+      new Map(
+        (datos.pnd?.ejes ?? []).flatMap((e) =>
+          e.lineas.map((l) => [l.id, { nombre: l.nombre, eje: e.numero }] as const),
+        ),
+      ),
+    [datos.pnd],
+  );
+  const nombreEje = (id: string) => {
+    if (id === SIN_RELACION) return "Sin relación clara con el PND";
+    const eje = datos.pnd?.ejes.find((e) => e.id === id);
+    return eje ? `Eje ${eje.numero} · ${eje.nombre}` : id;
+  };
+
+  // El filtro por eje solo afecta la tabla; la generalidad mira todo el territorio.
+  const filasTabla = useMemo(
+    () =>
+      ejePnd === null
+        ? filas
+        : filas.filter((f) => (ejePnd === SIN_RELACION ? !f.pnd : f.pnd?.eje === ejePnd)),
+    [filas, ejePnd],
+  );
+  const grupos = useMemo(() => agruparNarrativas(filasTabla, codigo), [filasTabla, codigo]);
 
   // Búsqueda sobre el relato, el tema y los lugares.
   const q = normalizar(busqueda.trim());
@@ -82,11 +112,16 @@ export function Narrativas({
     municipios.map((m) => `${nombreDe(m)} ${nombreDe(m.slice(0, 2))}`).join(" ");
   const coincide = (texto: string) => !q || normalizar(texto).includes(q);
 
+  const nombreLinea = (id: string | null | undefined) => (id ? lineaPorId.get(id)?.nombre ?? "" : "");
   const listaGrupos = grupos.filter((g) =>
-    coincide(`${g.cuerpo} ${g.temas.map((t) => temaDe(t).etiqueta).join(" ")} ${lugaresDe(g.municipios)}`),
+    coincide(
+      `${g.cuerpo} ${g.temas.map((t) => temaDe(t).etiqueta).join(" ")} ${lugaresDe(g.municipios)} ${nombreLinea(g.pnd)}`,
+    ),
   );
-  const listaTodas = filas.filter((f) =>
-    coincide(`${f.cuerpo} ${temaDe(f.aporte.tema).etiqueta} ${lugaresDe(f.aporte.municipios)}`),
+  const listaTodas = filasTabla.filter((f) =>
+    coincide(
+      `${f.cuerpo} ${temaDe(f.aporte.tema).etiqueta} ${lugaresDe(f.aporte.municipios)} ${nombreLinea(f.pnd?.linea)}`,
+    ),
   );
   const total = vista === "agrupadas" ? listaGrupos.length : listaTodas.length;
   const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
@@ -165,10 +200,26 @@ export function Narrativas({
               resumen={resumen}
               nombreTerritorio={nombreTerritorio}
               nacional={codigo === null}
+              ejePrincipal={
+                alineacion?.ejes.reduce(
+                  (max, e) => (e.total > (max?.total ?? 0) ? e : max),
+                  null as (typeof alineacion.ejes)[number] | null,
+                ) ?? null
+              }
             />
           )}
         </motion.div>
       </AnimatePresence>
+
+      {alineacion && alineacion.total > 0 && datos.pnd && (
+        <AlineacionPnd
+          alineacion={alineacion}
+          fuente={datos.pnd.fuente}
+          nombreTerritorio={nombreTerritorio}
+          ejeActivo={ejePnd}
+          onEje={setEjePnd}
+        />
+      )}
 
       {/* Tabla */}
       <div className="relative mt-6">
@@ -202,13 +253,23 @@ export function Narrativas({
             ))}
           </div>
 
+          {ejePnd && (
+            <button
+              onClick={() => setEjePnd(null)}
+              className="flex items-center gap-1.5 rounded-full border border-gold-500 bg-[rgba(255,200,0,.08)] px-3 py-1 text-xs text-primary transition-colors hover:bg-[rgba(255,200,0,.14)] sm:mr-auto"
+            >
+              {nombreEje(ejePnd)}
+              <X className="size-3.5 text-accent" />
+            </button>
+          )}
+
           <label className="group relative w-full sm:w-72">
             <span className="sr-only">Buscar en las narrativas</span>
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted group-focus-within:text-accent" />
             <input
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar relato, tema o municipio"
+              placeholder={datos.pnd ? "Buscar relato, tema, lugar o línea" : "Buscar relato, tema o municipio"}
               className="h-9 w-full rounded-sm border border-default bg-surface-2/60 pr-8 pl-9 text-sm text-primary outline-none transition-all placeholder:text-muted focus:border-gold-500 focus:shadow-[0_0_0_3px_rgba(255,200,0,.2)]"
             />
             {busqueda && (
@@ -229,12 +290,14 @@ export function Narrativas({
               grupos={listaGrupos.slice(desde, desde + POR_PAGINA)}
               maximo={listaGrupos[0]?.veces ?? 1}
               nombreDe={nombreDe}
+              lineaDe={datos.pnd ? (id) => lineaPorId.get(id ?? "") ?? null : null}
               claveAnimacion={`${contexto}|${actual}`}
             />
           ) : (
             <TablaTodas
               filas={listaTodas.slice(desde, desde + POR_PAGINA)}
               nombreDe={nombreDe}
+              lineaDe={datos.pnd ? (id) => lineaPorId.get(id ?? "") ?? null : null}
               claveAnimacion={`${contexto}|${actual}`}
             />
           )}
@@ -299,10 +362,12 @@ function GeneralidadNarrativa({
   resumen,
   nombreTerritorio,
   nacional,
+  ejePrincipal,
 }: {
   resumen: Generalidad;
   nombreTerritorio: string;
   nacional: boolean;
+  ejePrincipal: { numero: number; nombre: string; porcentaje: number } | null;
 }) {
   const [t1, t2] = resumen.temas;
   const maxVeces = resumen.recurrentes[0]?.veces ?? 1;
@@ -324,11 +389,12 @@ function GeneralidadNarrativa({
           {t1 ? (
             <>
               la conversación gira sobre todo en torno a{" "}
-              <span className="text-accent">{temaDe(t1.tema).etiqueta.toLowerCase()}</span>
+              <span className="text-accent">{temaDe(t1.tema).etiqueta}</span>
               {t2 && (
                 <>
-                  {" "}
-                  y <span className="text-accent">{temaDe(t2.tema).etiqueta.toLowerCase()}</span>
+                  {/* "Agricultura y Desarrollo Rural, y Estadística": la coma evita la doble "y". */}
+                  {temaDe(t1.tema).etiqueta.includes(" y ") ? "," : ""} y{" "}
+                  <span className="text-accent">{temaDe(t2.tema).etiqueta}</span>
                 </>
               )}
               .
@@ -356,16 +422,27 @@ function GeneralidadNarrativa({
             {Math.round((resumen.confirmadas * 100) / resumen.total)}%
           </span>{" "}
           fue confirmado por quien lo contó.
+          {ejePrincipal && (
+            <>
+              {" "}
+              Frente al Plan Nacional de Desarrollo, se conecta sobre todo con el eje{" "}
+              <span className="text-primary">
+                {ejePrincipal.numero} · {ejePrincipal.nombre}
+              </span>{" "}
+              (<span className="cifra">{Math.round(ejePrincipal.porcentaje)}%</span>).
+            </>
+          )}
         </p>
 
         {/* Temas predominantes */}
         <div className="mt-4 space-y-2">
           {resumen.temas.map(({ tema, total, porcentaje }, i) => {
-            const { etiqueta, icono: Icono } = temaDe(tema);
+            const { etiqueta, corta, icono: Icono } = temaDe(tema);
             return (
-              <div key={tema} className="grid grid-cols-[7rem_1fr_3.5rem] items-center gap-3 text-xs">
-                <span className="flex items-center gap-1.5 text-secondary">
-                  <Icono className="size-3.5 text-accent" /> {etiqueta}
+              <div key={tema} className="grid grid-cols-[9rem_1fr_3.5rem] items-center gap-3 text-xs">
+                <span className="flex min-w-0 items-center gap-1.5 text-secondary" title={etiqueta}>
+                  <Icono className="size-3.5 shrink-0 text-accent" />
+                  <span className="truncate">{corta}</span>
                 </span>
                 <span className="h-1.5 overflow-hidden rounded-full bg-white/8">
                   <motion.span
@@ -465,15 +542,16 @@ const cabecera = "etiqueta sticky top-0 bg-surface-1 px-3 py-2.5 text-left text-
 const celda = "px-3 py-3 align-top";
 
 function ChipTema({ tema }: { tema: string | null }) {
-  const { etiqueta, icono: Icono } = temaDe(tema);
+  const { etiqueta, corta, icono: Icono } = temaDe(tema);
   return (
     <span
+      title={etiqueta}
       className={`inline-flex items-center gap-1.5 rounded-xs border px-2 py-0.5 text-xs whitespace-nowrap ${
         tema ? "border-subtle text-secondary" : "border-dashed border-subtle text-muted"
       }`}
     >
       <Icono className={`size-3.5 ${tema ? "text-accent" : ""}`} />
-      {etiqueta}
+      {corta}
     </span>
   );
 }
@@ -513,20 +591,23 @@ function TablaAgrupada({
   grupos,
   maximo,
   nombreDe,
+  lineaDe,
   claveAnimacion,
 }: {
   grupos: GrupoNarrativo[];
   maximo: number;
   nombreDe: (c: string) => string;
+  lineaDe: BuscarLinea | null;
   claveAnimacion: string;
 }) {
   if (!grupos.length) return null;
   return (
-    <table className="w-full min-w-[46rem] border-collapse">
+    <table className={`w-full border-collapse ${lineaDe ? "min-w-[58rem]" : "min-w-[46rem]"}`}>
       <thead>
         <tr>
           <th className={cabecera}>Relato</th>
           <th className={cabecera}>Tema</th>
+          {lineaDe && <th className={cabecera}>Línea del PND</th>}
           <th className={cabecera}>Dónde se cuenta</th>
           <th className={`${cabecera} w-40`}>Veces</th>
           <th className={`${cabecera} text-right`}>Último</th>
@@ -551,6 +632,11 @@ function TablaAgrupada({
                 ))}
               </div>
             </td>
+            {lineaDe && (
+              <td className={celda}>
+                <CeldaLinea linea={lineaDe(g.pnd)} />
+              </td>
+            )}
             <td className={celda}>
               <Lugares municipios={g.municipios} nombreDe={nombreDe} />
             </td>
@@ -579,6 +665,26 @@ function TablaAgrupada({
   );
 }
 
+type BuscarLinea = (id: string | null) => { nombre: string; eje: number } | null;
+
+function CeldaLinea({
+  linea,
+  claves,
+}: {
+  linea: { nombre: string; eje: number } | null;
+  claves?: string[];
+}) {
+  if (!linea) return <span className="text-xs text-muted italic">Sin relación clara</span>;
+  return (
+    <span className="block max-w-[15rem]" title={claves?.length ? `Coincide por: ${claves.join(", ")}` : undefined}>
+      <span className="block text-xs leading-snug text-primary">{linea.nombre}</span>
+      <span className="cifra mt-0.5 inline-block rounded-xs bg-[rgba(78,139,224,.14)] px-1.5 text-[10px] text-info">
+        Eje {linea.eje}
+      </span>
+    </span>
+  );
+}
+
 const CLASES = {
   mal_interpretado: "Corregida: se había interpretado mal",
   cambio_de_posicion: "Corregida: cambio de posición",
@@ -587,19 +693,22 @@ const CLASES = {
 function TablaTodas({
   filas,
   nombreDe,
+  lineaDe,
   claveAnimacion,
 }: {
   filas: FilaNarrativa[];
   nombreDe: (c: string) => string;
+  lineaDe: BuscarLinea | null;
   claveAnimacion: string;
 }) {
   if (!filas.length) return null;
   return (
-    <table className="w-full min-w-[52rem] border-collapse">
+    <table className={`w-full border-collapse ${lineaDe ? "min-w-[64rem]" : "min-w-[52rem]"}`}>
       <thead>
         <tr>
           <th className={cabecera}>Narrativa</th>
           <th className={cabecera}>Tema</th>
+          {lineaDe && <th className={cabecera}>Línea del PND</th>}
           <th className={cabecera}>Territorio</th>
           <th className={cabecera}>Canal</th>
           <th className={cabecera}>Fecha</th>
@@ -622,6 +731,11 @@ function TablaTodas({
               <td className={celda}>
                 <ChipTema tema={f.aporte.tema} />
               </td>
+              {lineaDe && (
+                <td className={celda}>
+                  <CeldaLinea linea={lineaDe(f.pnd?.linea ?? null)} claves={f.pnd?.claves} />
+                </td>
+              )}
               <td className={celda}>
                 <Lugares municipios={f.aporte.municipios} nombreDe={nombreDe} />
               </td>
