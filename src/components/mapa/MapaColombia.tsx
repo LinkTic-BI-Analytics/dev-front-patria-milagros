@@ -39,6 +39,10 @@ type Props = {
 };
 
 type Objetivo = { fuente: "departamentos" | "municipios" | "paises"; codigo: string; dpto: string };
+
+/** ¿Se puede pintar? El estilo y las capas propias tienen que existir ya. */
+const mapaListo = (map: mapboxgl.Map | null): map is mapboxgl.Map =>
+  Boolean(map && map.isStyleLoaded() && map.getLayer("dep-relleno") && map.getLayer("pais-relleno"));
 type Punto = Objetivo & { x: number; y: number; ancho: number; alto: number };
 type FC = FeatureCollection<Geometry, { codigo: string; dpto?: string }>;
 
@@ -276,7 +280,8 @@ export default function MapaColombia(props: Props) {
 
   // Montaje: mapa, capas, intro e interacción.
   useEffect(() => {
-    if (!contenedor.current) return;
+    // React puede volver a montar los efectos (modo estricto, Suspense): un solo mapa por contenedor.
+    if (!contenedor.current || mapaRef.current) return;
     let cancelado = false;
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
@@ -428,8 +433,12 @@ export default function MapaColombia(props: Props) {
       observador.disconnect();
       giroRef.current?.destruir();
       giroRef.current = null;
+      geoRef.current = null;
       map.remove();
       mapaRef.current = null;
+      // El próximo mapa arranca de cero: sin esto, los efectos pintarían sobre un estilo a medio cargar.
+      setCapasListas(false);
+      setIntroTerminada(false);
     };
   }, []);
 
@@ -439,7 +448,7 @@ export default function MapaColombia(props: Props) {
   useEffect(() => {
     const map = mapaRef.current;
     const geo = geoRef.current;
-    if (!map || !geo || !capasListas) return;
+    if (!mapaListo(map) || !geo || !capasListas) return;
     const v = valores[metrica];
 
     if (ambito === "internacional") {
@@ -522,7 +531,7 @@ export default function MapaColombia(props: Props) {
   // Selección
   useEffect(() => {
     const map = mapaRef.current;
-    if (!map || !capasListas || !seleccion || ambito === "internacional") return;
+    if (!mapaListo(map) || !capasListas || !seleccion || ambito === "internacional") return;
     const id = { source: seleccion.length === 2 ? "departamentos" : "municipios", id: seleccion };
     map.setFeatureState(id, { sel: true });
     return () => {
@@ -535,7 +544,7 @@ export default function MapaColombia(props: Props) {
   useEffect(() => {
     const map = mapaRef.current;
     const geo = geoRef.current;
-    if (!map || !geo || !capasListas) return;
+    if (!mapaListo(map) || !geo || !capasListas) return;
 
     const filtro = exp(["==", ["get", "dpto"], departamento ?? "__"]);
     for (const capa of ["mun-relleno", "mun-brillo", "mun-borde", "mun-3d", "mun-resplandor", "mun-contorno"])
@@ -579,7 +588,7 @@ export default function MapaColombia(props: Props) {
   useEffect(() => {
     const map = mapaRef.current;
     const giro = giroRef.current;
-    if (!map || !capasListas || !giro) return;
+    if (!mapaListo(map) || !capasListas || !giro) return;
 
     const internacional = ambito === "internacional";
     for (const capa of CAPAS_PAISES)

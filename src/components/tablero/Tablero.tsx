@@ -320,28 +320,25 @@ export function Tablero({ datos }: { datos: DatosTablero }) {
                   )}
                 </AnimatePresence>
               </div>
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={codigo ?? "pais"}
-                  initial={{ opacity: 0, y: 12, filter: "blur(6px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  exit={{ opacity: 0, y: -12, filter: "blur(6px)" }}
-                  transition={{ duration: 0.4, ease: suave }}
-                >
-                  <h2 className="titulo-display mt-1 text-3xl font-black uppercase">
-                    {codigo ? nombre(codigo) : "Colombia"}
-                  </h2>
-                  <p className="mt-1 text-sm text-secondary">
-                    {codigo && codigo.length === 5
-                      ? `${nombre(codigo.slice(0, 2))} · código DIVIPOLA ${codigo}`
-                      : codigo
-                        ? `${formatoNumero(resumen.municipiosConAportes)} de ${formatoNumero(
-                            Object.keys(datos.municipios).filter((c) => c.startsWith(codigo)).length,
-                          )} municipios con aportes ubicados`
-                        : `${formatoNumero(resumen.municipiosConAportes)} municipios con participación registrada`}
-                  </p>
-                </motion.div>
-              </AnimatePresence>
+              <motion.div
+                key={codigo ?? "pais"}
+                initial={{ opacity: 0, y: 12, filter: "blur(6px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.4, ease: suave }}
+              >
+                <h2 className="titulo-display mt-1 text-3xl font-black uppercase">
+                  {codigo ? nombre(codigo) : "Colombia"}
+                </h2>
+                <p className="mt-1 text-sm text-secondary">
+                  {codigo && codigo.length === 5
+                    ? `${nombre(codigo.slice(0, 2))} · código DIVIPOLA ${codigo}`
+                    : codigo
+                      ? `${formatoNumero(resumen.municipiosConAportes)} de ${formatoNumero(
+                          Object.keys(datos.municipios).filter((c) => c.startsWith(codigo)).length,
+                        )} municipios con aportes ubicados`
+                      : `${formatoNumero(resumen.municipiosConAportes)} municipios con participación registrada`}
+                </p>
+              </motion.div>
             </div>
           </motion.div>
 

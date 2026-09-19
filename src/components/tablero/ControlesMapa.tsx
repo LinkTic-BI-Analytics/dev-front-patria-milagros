@@ -34,31 +34,29 @@ export function MigaTerritorio({
   const abierto = internacional || Boolean(departamento);
   return (
     <div className="vidrio pointer-events-auto flex items-center gap-3 rounded-md py-2.5 pr-4 pl-2.5 shadow-[var(--shadow-card)]">
-      <AnimatePresence mode="popLayout" initial={false}>
+      {/* Sin AnimatePresence: el icono y el texto se reemplazan y entran animados.
+          Con salidas encadenadas la miga se quedaba mostrando la vista anterior. */}
+      <motion.div
+        key={abierto ? "volver" : "icono"}
+        initial={{ opacity: 0, scale: 0.7 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.25, ease: suave }}
+      >
         {abierto ? (
-          <motion.button
-            key="volver"
-            initial={{ opacity: 0, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.6 }}
+          <button
             onClick={onSalir}
             className="grid size-9 place-items-center rounded-sm bg-action-primary text-action-primary-text shadow-glow-gold transition-transform hover:-translate-x-0.5"
             aria-label={internacional ? "Volver a Colombia" : "Volver a la vista nacional"}
           >
             <ChevronLeft className="size-5" />
-          </motion.button>
+          </button>
         ) : (
-          <motion.span
-            key="icono"
-            initial={{ opacity: 0, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.6 }}
-            className="grid size-9 place-items-center rounded-sm bg-[rgba(255,200,0,.12)] text-accent"
-          >
+          <span className="grid size-9 place-items-center rounded-sm bg-[rgba(255,200,0,.12)] text-accent">
             <MapaIcono className="size-5" />
-          </motion.span>
+          </span>
         )}
-      </AnimatePresence>
+      </motion.div>
+
       <div className="min-w-0">
         <p className="etiqueta flex items-center gap-1.5 text-[11px]">
           <button onClick={onSalir} className="transition-colors hover:text-accent">
@@ -71,25 +69,22 @@ export function MigaTerritorio({
             </>
           )}
         </p>
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.p
-            key={internacional ? "mundo" : (departamento ?? "nacional")}
-            initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, y: -10, filter: "blur(4px)" }}
-            transition={{ duration: 0.35, ease: suave }}
-            className="titulo-display truncate text-lg font-extrabold sm:text-xl"
-          >
-            {internacional ? "Vista internacional" : departamento ? nombreDepto : "Vista nacional"}
-            <span className="ml-2 align-middle text-xs font-semibold tracking-normal text-muted">
-              {internacional
-                ? "177 países"
-                : departamento
-                  ? `${municipios} municipios`
-                  : "33 departamentos"}
-            </span>
-          </motion.p>
-        </AnimatePresence>
+        <motion.p
+          key={internacional ? "mundo" : (departamento ?? "nacional")}
+          initial={{ opacity: 0, y: 8, filter: "blur(4px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          transition={{ duration: 0.3, ease: suave }}
+          className="titulo-display truncate text-lg font-extrabold sm:text-xl"
+        >
+          {internacional ? "Vista internacional" : departamento ? nombreDepto : "Vista nacional"}
+          <span className="ml-2 align-middle text-xs font-semibold tracking-normal text-muted">
+            {internacional
+              ? "177 países"
+              : departamento
+                ? `${municipios} municipios`
+                : "33 departamentos"}
+          </span>
+        </motion.p>
       </div>
     </div>
   );

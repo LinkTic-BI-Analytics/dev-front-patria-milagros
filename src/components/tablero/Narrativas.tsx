@@ -186,18 +186,16 @@ export function Narrativas({
           <p className="etiqueta text-accent">Lo cualitativo · Voces del territorio</p>
           <h2 className="titulo-display mt-1 text-2xl font-black sm:text-3xl">
             Narrativas ciudadanas{" "}
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.span
-                key={nombreTerritorio}
-                className="inline-block text-accent"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.3 }}
-              >
-                · {nombreTerritorio}
-              </motion.span>
-            </AnimatePresence>
+            {/* Se reemplaza al vuelo: con salida encadenada el título se quedaba atrás. */}
+            <motion.span
+              key={nombreTerritorio}
+              className="inline-block text-accent"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              · {nombreTerritorio}
+            </motion.span>
           </h2>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">

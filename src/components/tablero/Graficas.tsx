@@ -130,7 +130,7 @@ export function GraficaEvolucion({ meses }: { meses: Resumen["meses"] }) {
 
   return (
     <div className="h-40">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" debounce={40}>
         <AreaChart data={datos} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
           <defs>
             <linearGradient id="relleno-evolucion" x1="0" y1="0" x2="0" y2="1">
