@@ -5,7 +5,7 @@ import type { Feature, FeatureCollection, Geometry } from "geojson";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { MousePointerClick } from "lucide-react";
+import { Globe, MousePointerClick } from "lucide-react";
 import cajas from "@/lib/geo/cajas.json";
 import {
   METRICAS,
@@ -15,11 +15,19 @@ import {
   type Metrica,
 } from "@/lib/datos/catalogos";
 import type { ValoresMapa } from "@/lib/datos/agregar";
+import { COLOMBIA_ISO, SIN_DATOS, type CifrasPais } from "@/lib/datos/internacional";
 import type { DatosTablero } from "@/lib/datos/tipos";
+import { RELLENO_VACIO, colorPorT, estado, exp, reducirMovimiento } from "./estilo";
+import { CAPAS_PAISES, agregarCapasPaises, crearGiro, type MapaPaises, type PropsPais } from "./paises";
+
+export type Ambito = "nacional" | "internacional";
 
 type Props = {
   valores: Record<Metrica, ValoresMapa>;
+  cifrasPaises: Map<string, CifrasPais>;
   metrica: Metrica;
+  ambito: Ambito;
+  onAmbito: (ambito: Ambito) => void;
   departamento: string | null;
   seleccion: string | null;
   modo3d: boolean;
@@ -30,7 +38,7 @@ type Props = {
   onSalir: () => void;
 };
 
-type Objetivo = { fuente: "departamentos" | "municipios"; codigo: string; dpto: string };
+type Objetivo = { fuente: "departamentos" | "municipios" | "paises"; codigo: string; dpto: string };
 type Punto = Objetivo & { x: number; y: number; ancho: number; alto: number };
 type FC = FeatureCollection<Geometry, { codigo: string; dpto?: string }>;
 
@@ -39,34 +47,6 @@ const COLOMBIA: mapboxgl.LngLatBoundsLike = [
   [-79.1, -4.25],
   [-66.85, 12.5],
 ];
-const RELLENO_VACIO = "rgba(78, 139, 224, 0.16)";
-const exp = (e: unknown) => e as mapboxgl.ExpressionSpecification;
-
-const estado = (clave: string) => exp(["boolean", ["feature-state", clave], false]);
-const colorPorT = exp([
-  "case",
-  ["<", ["coalesce", ["feature-state", "t"], -1], 0],
-  RELLENO_VACIO,
-  [
-    "interpolate-lab",
-    ["linear"],
-    ["feature-state", "t"],
-    0,
-    RAMPA_MAPA[0],
-    0.25,
-    RAMPA_MAPA[1],
-    0.5,
-    RAMPA_MAPA[2],
-    0.75,
-    RAMPA_MAPA[3],
-    1,
-    RAMPA_MAPA[4],
-  ],
-]);
-
-const reducirMovimiento = () =>
-  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 function relleno(tamano: { width: number; height: number }) {
   const compacto = tamano.width < 640;
   return compacto
@@ -282,7 +262,9 @@ function agregarCapas(map: mapboxgl.Map, dep: FC, mun: FC) {
 export default function MapaColombia(props: Props) {
   const contenedor = useRef<HTMLDivElement>(null);
   const mapaRef = useRef<mapboxgl.Map | null>(null);
-  const geoRef = useRef<{ dep: FC; mun: FC } | null>(null);
+  const geoRef = useRef<{ dep: FC; mun: FC; paises: MapaPaises } | null>(null);
+  const giroRef = useRef<ReturnType<typeof crearGiro> | null>(null);
+  const [paises, setPaises] = useState<Map<string, PropsPais>>(new Map());
   const ultimo = useRef(props);
   const [capasListas, setCapasListas] = useState(false);
   const [introTerminada, setIntroTerminada] = useState(false);
@@ -322,6 +304,7 @@ export default function MapaColombia(props: Props) {
     const geo = Promise.all([
       fetch("/data/geo/departamentos.json").then((r) => r.json() as Promise<FC>),
       fetch("/data/geo/municipios.json").then((r) => r.json() as Promise<FC>),
+      fetch("/data/geo/paises.json").then((r) => r.json() as Promise<MapaPaises>),
     ]);
 
     map.on("style.load", () => vestirMapaBase(map));
@@ -330,10 +313,13 @@ export default function MapaColombia(props: Props) {
       if (!reducirMovimiento()) {
         map.easeTo({ center: [-74, 4.5], zoom: 1.9, duration: 2200, easing: (t) => t });
       }
-      const [dep, mun] = await geo;
+      const [dep, mun, mundo] = await geo;
       if (cancelado) return;
-      geoRef.current = { dep, mun };
+      geoRef.current = { dep, mun, paises: mundo };
       agregarCapas(map, dep, mun);
+      agregarCapasPaises(map, mundo);
+      giroRef.current = crearGiro(map);
+      setPaises(new Map(mundo.features.map((f) => [f.properties.codigo, f.properties])));
       setCapasListas(true);
 
       const aterrizar = () => {
@@ -351,7 +337,13 @@ export default function MapaColombia(props: Props) {
 
     // Qué hay bajo el cursor, en orden de prioridad.
     const objetivo = (p: mapboxgl.PointLike): Objetivo | null => {
-      const { departamento } = ultimo.current;
+      const { departamento, ambito } = ultimo.current;
+      if (ambito === "internacional") {
+        if (!map.getLayer("pais-relleno")) return null;
+        const f = map.queryRenderedFeatures(p, { layers: ["pais-relleno"] })[0];
+        const codigo = String(f?.properties?.codigo ?? "");
+        return codigo ? { fuente: "paises", codigo, dpto: codigo } : null;
+      }
       const capas = departamento
         ? ["mun-3d", "mun-relleno", "dep-relleno"]
         : ["dep-3d", "dep-relleno"];
@@ -382,6 +374,10 @@ export default function MapaColombia(props: Props) {
       const o = objetivo(e.point);
       marcarHover(o);
       map.getCanvas().style.cursor = o ? "pointer" : "";
+      if (ultimo.current.ambito === "internacional") {
+        if (o) giroRef.current?.pausar();
+        else giroRef.current?.reanudarPronto(1200);
+      }
       setPunto(
         o
           ? {
@@ -397,10 +393,13 @@ export default function MapaColombia(props: Props) {
     map.on("mouseout", () => {
       marcarHover(null);
       setPunto(null);
+      giroRef.current?.reanudarPronto(1200);
     });
 
     map.on("click", (e) => {
       if (!map.getLayer("dep-relleno")) return;
+      // En el mundo no hay selección: se mira y, sobre Colombia, se entra al detalle.
+      if (ultimo.current.ambito === "internacional") return;
       const o = objetivo(e.point);
       const { departamento, onSeleccionar } = ultimo.current;
       // Con un departamento abierto, los vecinos atenuados solo se exploran con doble clic.
@@ -412,7 +411,11 @@ export default function MapaColombia(props: Props) {
       e.preventDefault();
       if (!map.getLayer("dep-relleno")) return;
       const o = objetivo(e.point);
-      const { departamento, onEntrar, onSalir } = ultimo.current;
+      const { departamento, onEntrar, onSalir, ambito, onAmbito } = ultimo.current;
+      if (ambito === "internacional") {
+        if (o?.codigo === COLOMBIA_ISO) onAmbito("nacional");
+        return;
+      }
       if (!o) return onSalir();
       if (o.dpto !== departamento) onEntrar(o.dpto);
     });
@@ -423,18 +426,47 @@ export default function MapaColombia(props: Props) {
     return () => {
       cancelado = true;
       observador.disconnect();
+      giroRef.current?.destruir();
+      giroRef.current = null;
       map.remove();
       mapaRef.current = null;
     };
   }, []);
 
   // Colores y cifras según métrica, filtros y nivel.
-  const { valores, metrica, departamento, seleccion, departamentos, municipios } = props;
+  const { valores, cifrasPaises, ambito, metrica, departamento, seleccion, departamentos, municipios } =
+    props;
   useEffect(() => {
     const map = mapaRef.current;
     const geo = geoRef.current;
     if (!map || !geo || !capasListas) return;
     const v = valores[metrica];
+
+    if (ambito === "internacional") {
+      const maxPais = Math.max(0, ...[...cifrasPaises.values()].map((c) => c[metrica]));
+      for (const f of geo.paises.features) {
+        const n = cifrasPaises.get(f.properties.codigo)?.[metrica] ?? 0;
+        map.setFeatureState(
+          { source: "paises", id: f.properties.codigo },
+          { t: n > 0 && maxPais ? Math.sqrt(n / maxPais) : -1, activo: f.properties.codigo === COLOMBIA_ISO },
+        );
+      }
+      const conDatos: Feature[] = [];
+      for (const f of geo.paises.features) {
+        const n = cifrasPaises.get(f.properties.codigo)?.[metrica] ?? 0;
+        if (n === 0) continue;
+        conDatos.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [f.properties.lon, f.properties.lat] },
+          properties: { valor: n, t: 1, nombre: f.properties.nombre },
+        });
+      }
+      (map.getSource("cifras") as mapboxgl.GeoJSONSource | undefined)?.setData({
+        type: "FeatureCollection",
+        features: conDatos,
+      });
+      return;
+    }
 
     // Color con raíz cuadrada (los conteos son muy desiguales); altura 3D lineal y comparable.
     const maxDep = Math.max(0, ...v.departamentos.values());
@@ -485,18 +517,18 @@ export default function MapaColombia(props: Props) {
       type: "FeatureCollection",
       features: puntos,
     });
-  }, [valores, metrica, departamento, capasListas, departamentos, municipios]);
+  }, [valores, cifrasPaises, ambito, metrica, departamento, capasListas, departamentos, municipios]);
 
   // Selección
   useEffect(() => {
     const map = mapaRef.current;
-    if (!map || !capasListas || !seleccion) return;
+    if (!map || !capasListas || !seleccion || ambito === "internacional") return;
     const id = { source: seleccion.length === 2 ? "departamentos" : "municipios", id: seleccion };
     map.setFeatureState(id, { sel: true });
     return () => {
       if (map.getSource(id.source)) map.setFeatureState(id, { sel: false });
     };
-  }, [seleccion, capasListas]);
+  }, [seleccion, capasListas, ambito]);
 
   // Nivel: nacional ↔ departamento
   const { modo3d } = props;
@@ -519,10 +551,11 @@ export default function MapaColombia(props: Props) {
       );
     }
 
-    map.setLayoutProperty("dep-3d", "visibility", modo3d && !departamento ? "visible" : "none");
-    map.setLayoutProperty("mun-3d", "visibility", modo3d && departamento ? "visible" : "none");
+    const nacional = ambito === "nacional";
+    map.setLayoutProperty("dep-3d", "visibility", nacional && modo3d && !departamento ? "visible" : "none");
+    map.setLayoutProperty("mun-3d", "visibility", nacional && modo3d && departamento ? "visible" : "none");
 
-    if (!introTerminada) return;
+    if (!introTerminada || !nacional) return;
     const caja = departamento ? (cajas as Record<string, number[]>)[departamento] : null;
     map.fitBounds(
       caja
@@ -540,12 +573,45 @@ export default function MapaColombia(props: Props) {
         maxZoom: 9.5,
       },
     );
-  }, [departamento, modo3d, capasListas, introTerminada]);
+  }, [departamento, modo3d, capasListas, introTerminada, ambito]);
+
+  // Ámbito: Colombia ↔ el mundo girando
+  useEffect(() => {
+    const map = mapaRef.current;
+    const giro = giroRef.current;
+    if (!map || !capasListas || !giro) return;
+
+    const internacional = ambito === "internacional";
+    for (const capa of CAPAS_PAISES)
+      map.setLayoutProperty(capa, "visibility", internacional ? "visible" : "none");
+    for (const capa of ["dep-relleno", "dep-brillo", "dep-borde", "dep-resplandor", "dep-contorno"])
+      map.setLayoutProperty(capa, "visibility", internacional ? "none" : "visible");
+    for (const capa of ["mun-relleno", "mun-brillo", "mun-borde", "mun-resplandor", "mun-contorno"])
+      map.setLayoutProperty(capa, "visibility", internacional ? "none" : "visible");
+
+    if (!internacional) {
+      giro.detener();
+      return;
+    }
+    map.easeTo({
+      center: [-70, 12],
+      zoom: 1.45,
+      pitch: 0,
+      bearing: 0,
+      duration: reducirMovimiento() ? 0 : 1800,
+      essential: true,
+    });
+    const arranque = setTimeout(() => giro.iniciar(), reducirMovimiento() ? 0 : 1900);
+    return () => clearTimeout(arranque);
+  }, [ambito, capasListas]);
 
   // Esc vuelve a la vista nacional
   useEffect(() => {
     const alPresionar = (e: KeyboardEvent) => {
-      if (e.key === "Escape") ultimo.current.onSalir();
+      if (e.key !== "Escape") return;
+      const { ambito, onAmbito, onSalir } = ultimo.current;
+      if (ambito === "internacional") onAmbito("nacional");
+      else onSalir();
     };
     window.addEventListener("keydown", alPresionar);
     return () => window.removeEventListener("keydown", alPresionar);
@@ -553,7 +619,9 @@ export default function MapaColombia(props: Props) {
 
   // Leyenda
   const v = valores[metrica];
-  const maxEscala = departamento
+  const maxEscala = ambito === "internacional"
+    ? Math.max(0, ...[...cifrasPaises.values()].map((c) => c[metrica]))
+    : departamento
     ? Math.max(
         0,
         ...[...v.municipios].filter(([c]) => c.startsWith(departamento)).map(([, n]) => n),
@@ -577,7 +645,7 @@ export default function MapaColombia(props: Props) {
           >
             <div className="flex flex-col items-center gap-4">
               <span className="size-3 animate-pulso rounded-full bg-gold-500" />
-              <p className="etiqueta">Cargando cartografía nacional</p>
+              <p className="etiqueta">Cargando cartografía</p>
             </div>
           </motion.div>
         )}
@@ -595,6 +663,8 @@ export default function MapaColombia(props: Props) {
             departamento={departamento}
             departamentos={departamentos}
             municipios={municipios}
+            paises={paises}
+            cifrasPaises={cifrasPaises}
           />
         )}
       </AnimatePresence>
@@ -607,7 +677,8 @@ export default function MapaColombia(props: Props) {
         className="vidrio pointer-events-none absolute bottom-4 left-4 w-64 rounded-md p-3.5 sm:bottom-6 sm:left-6"
       >
         <p className="etiqueta mb-2 truncate">
-          {METRICAS[metrica].etiqueta} · {departamento ? nombreDepto : "Colombia"}
+          {METRICAS[metrica].etiqueta} ·{" "}
+          {ambito === "internacional" ? "Mundo" : departamento ? nombreDepto : "Colombia"}
         </p>
         <div
           className="h-2.5 rounded-full"
@@ -622,7 +693,7 @@ export default function MapaColombia(props: Props) {
             className="size-3 rounded-[3px] border border-default"
             style={{ background: RELLENO_VACIO }}
           />
-          Sin registros
+          {ambito === "internacional" ? "Sin datos internacionales" : "Sin registros"}
         </div>
       </motion.div>
     </div>
@@ -636,6 +707,8 @@ function Tooltip({
   departamento,
   departamentos,
   municipios,
+  paises,
+  cifrasPaises,
 }: {
   punto: Punto;
   valores: Record<Metrica, ValoresMapa>;
@@ -643,11 +716,18 @@ function Tooltip({
   departamento: string | null;
   departamentos: DatosTablero["departamentos"];
   municipios: DatosTablero["municipios"];
+  paises: Map<string, PropsPais>;
+  cifrasPaises: Map<string, CifrasPais>;
 }) {
+  const esPais = punto.fuente === "paises";
   const esMunicipio = punto.fuente === "municipios";
-  const nombre = esMunicipio
-    ? municipios[punto.codigo]?.nombre
-    : departamentos[punto.codigo]?.nombre;
+  const pais = esPais ? paises.get(punto.codigo) : undefined;
+  const cifras = esPais ? (cifrasPaises.get(punto.codigo) ?? SIN_DATOS) : null;
+  const nombre = esPais
+    ? pais?.nombre
+    : esMunicipio
+      ? municipios[punto.codigo]?.nombre
+      : departamentos[punto.codigo]?.nombre;
   const nivel = esMunicipio ? "municipios" : "departamentos";
   const izquierda = punto.x + 280 > punto.ancho ? punto.x - 256 : punto.x + 18;
   const arriba = punto.y + 230 > punto.alto ? punto.y - 214 : punto.y + 18;
@@ -661,12 +741,14 @@ function Tooltip({
       className="vidrio pointer-events-none absolute z-20 w-60 rounded-md bg-surface-1/90! p-3.5 shadow-[var(--shadow-deep)]"
     >
       <p className="etiqueta mb-0.5">
-        {esMunicipio
-          ? nombrePropio(departamentos[punto.dpto]?.nombre ?? "Municipio")
-          : "Departamento"}
+        {esPais
+          ? (pais?.continente ?? "País")
+          : esMunicipio
+            ? nombrePropio(departamentos[punto.dpto]?.nombre ?? "Municipio")
+            : "Departamento"}
       </p>
       <p className="font-display text-[1rem] leading-tight font-extrabold">
-        {nombre ? nombrePropio(nombre) : `Código ${punto.codigo}`}
+        {esPais ? (nombre ?? punto.codigo) : nombre ? nombrePropio(nombre) : `Código ${punto.codigo}`}
       </p>
       <dl className="mt-3 space-y-1.5">
         {(Object.keys(METRICAS) as Metrica[]).map((m) => (
@@ -678,15 +760,30 @@ function Tooltip({
               {METRICAS[m].etiqueta}
             </dt>
             <dd className={`cifra ${m === metrica ? "text-accent" : "text-secondary"}`}>
-              {formatoNumero(valores[m][nivel].get(punto.codigo) ?? 0)}
+              {formatoNumero(cifras ? cifras[m] : (valores[m][nivel].get(punto.codigo) ?? 0))}
             </dd>
           </div>
         ))}
       </dl>
-      {!esMunicipio && punto.codigo !== departamento && (
+      {esPais ? (
         <p className="mt-3 flex items-center gap-1.5 border-t border-subtle pt-2.5 text-xs text-muted">
-          <MousePointerClick className="size-3.5" /> Doble clic para ver sus municipios
+          {punto.codigo === COLOMBIA_ISO ? (
+            <>
+              <MousePointerClick className="size-3.5" /> Doble clic para volver al detalle nacional
+            </>
+          ) : (
+            <>
+              <Globe className="size-3.5" /> Sin datos internacionales registrados
+            </>
+          )}
         </p>
+      ) : (
+        !esMunicipio &&
+        punto.codigo !== departamento && (
+          <p className="mt-3 flex items-center gap-1.5 border-t border-subtle pt-2.5 text-xs text-muted">
+            <MousePointerClick className="size-3.5" /> Doble clic para ver sus municipios
+          </p>
+        )
       )}
     </motion.div>
   );

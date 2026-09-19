@@ -1,4 +1,4 @@
-# Sistema de Planeación Nacional
+# Sistema de Escucha y Planeación Nacional
 
 Tablero territorial de la participación ciudadana en Colombia. El mapa (Mapbox) muestra el país por
 departamentos; doble clic en un departamento abre sus municipios. El panel lateral resume aportes,
@@ -31,6 +31,28 @@ base es por código DIVIPOLA (`DPTO` / `MPIOS` = `territorio.codigo`).
 Las reglas R1/R2 del esquema se respetan en `src/lib/datos/agregar.ts`: un aporte o necesidad en
 varios municipios cuenta una vez por territorio, y los aportes sin ubicación confirmada suman al total
 nacional pero no al mapa. Sin filtros, los totales se contrastan con el RPC `participacion.indicadores`.
+
+## Vistas del mapa
+
+Nacional (departamentos → municipios con doble clic) e **internacional**: el globo gira sobre su
+eje, se detiene al pasar el cursor por un país y muestra sus cifras. La base aún no registra país,
+así que solo Colombia trae datos (`src/lib/datos/internacional.ts` es el único punto a cambiar
+cuando lleguen). El mapa mundial sale de `public/data/geo/paises.json`, que genera
+`scripts/preparar-geo.mjs` desde `public/data/internacional.geojson`.
+
+## Ejes articuladores
+
+El botón del encabezado abre un modal con los 6 ejes del PND en una órbita 3D (CSS, sin librerías
+de 3D): visión, líneas temáticas, indicadores preliminares, área responsable y cuántas
+participaciones del territorio le corresponden, con opción de filtrar el mapa por ese eje.
+
+Cada aporte se relaciona con un eje desde su síntesis vigente o, si no tiene, desde su relato
+original, así que el filtro cubre casi todos los aportes.
+
+## Iconos
+
+`node scripts/generar-iconos.mjs` rasteriza `src/app/icon.svg` con Chrome y arma `favicon.ico`
+(16 a 256 px) y `apple-icon.png`.
 
 ## Conexión con el PND
 

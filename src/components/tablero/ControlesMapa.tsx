@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Box, ChevronDown, ChevronLeft, Layers, Map as MapaIcono, X } from "lucide-react";
+import { Box, ChevronDown, ChevronLeft, Globe, Layers, Map as MapaIcono, X } from "lucide-react";
 import {
   CANALES,
   METRICAS,
@@ -12,7 +12,8 @@ import {
   type Metrica,
 } from "@/lib/datos/catalogos";
 import type { Filtros } from "@/lib/datos/agregar";
-import type { Canal } from "@/lib/datos/tipos";
+import type { Ambito } from "@/components/mapa/MapaColombia";
+import type { Canal, PndResumen } from "@/lib/datos/tipos";
 
 const suave = [0.22, 1, 0.36, 1] as const;
 
@@ -20,17 +21,21 @@ export function MigaTerritorio({
   departamento,
   nombreDepto,
   municipios,
+  ambito,
   onSalir,
 }: {
   departamento: string | null;
   nombreDepto: string;
   municipios: number;
+  ambito: Ambito;
   onSalir: () => void;
 }) {
+  const internacional = ambito === "internacional";
+  const abierto = internacional || Boolean(departamento);
   return (
     <div className="vidrio pointer-events-auto flex items-center gap-3 rounded-md py-2.5 pr-4 pl-2.5 shadow-[var(--shadow-card)]">
       <AnimatePresence mode="popLayout" initial={false}>
-        {departamento ? (
+        {abierto ? (
           <motion.button
             key="volver"
             initial={{ opacity: 0, scale: 0.6 }}
@@ -38,7 +43,7 @@ export function MigaTerritorio({
             exit={{ opacity: 0, scale: 0.6 }}
             onClick={onSalir}
             className="grid size-9 place-items-center rounded-sm bg-action-primary text-action-primary-text shadow-glow-gold transition-transform hover:-translate-x-0.5"
-            aria-label="Volver a la vista nacional"
+            aria-label={internacional ? "Volver a Colombia" : "Volver a la vista nacional"}
           >
             <ChevronLeft className="size-5" />
           </motion.button>
@@ -57,9 +62,9 @@ export function MigaTerritorio({
       <div className="min-w-0">
         <p className="etiqueta flex items-center gap-1.5 text-[11px]">
           <button onClick={onSalir} className="transition-colors hover:text-accent">
-            Colombia
+            {internacional ? "Mundo" : "Colombia"}
           </button>
-          {departamento && (
+          {departamento && !internacional && (
             <>
               <span>›</span>
               <span className="text-accent">Departamento</span>
@@ -68,16 +73,20 @@ export function MigaTerritorio({
         </p>
         <AnimatePresence mode="wait" initial={false}>
           <motion.p
-            key={departamento ?? "nacional"}
+            key={internacional ? "mundo" : (departamento ?? "nacional")}
             initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: -10, filter: "blur(4px)" }}
             transition={{ duration: 0.35, ease: suave }}
             className="titulo-display truncate text-lg font-extrabold sm:text-xl"
           >
-            {departamento ? nombreDepto : "Vista nacional"}
+            {internacional ? "Vista internacional" : departamento ? nombreDepto : "Vista nacional"}
             <span className="ml-2 align-middle text-xs font-semibold tracking-normal text-muted">
-              {departamento ? `${municipios} municipios` : "33 departamentos"}
+              {internacional
+                ? "177 países"
+                : departamento
+                  ? `${municipios} municipios`
+                  : "33 departamentos"}
             </span>
           </motion.p>
         </AnimatePresence>
@@ -91,14 +100,48 @@ export function SelectorMetrica({
   onCambiar,
   modo3d,
   onModo3d,
+  ambito,
+  onAmbito,
 }: {
   metrica: Metrica;
   onCambiar: (m: Metrica) => void;
   modo3d: boolean;
   onModo3d: () => void;
+  ambito: Ambito;
+  onAmbito: (a: Ambito) => void;
 }) {
   return (
-    <div className="pointer-events-auto flex items-center gap-2">
+    <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
+      {/* Ámbito: Colombia o el mundo */}
+      <div className="vidrio flex rounded-md p-1 shadow-[var(--shadow-card)]" role="tablist">
+        {(
+          [
+            ["nacional", "Colombia", MapaIcono],
+            ["internacional", "Mundo", Globe],
+          ] as const
+        ).map(([valor, etiqueta, Icono]) => (
+          <button
+            key={valor}
+            role="tab"
+            aria-selected={ambito === valor}
+            onClick={() => onAmbito(valor)}
+            className={`relative flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-bold tracking-[0.04em] uppercase transition-colors ${
+              ambito === valor ? "text-action-primary-text" : "text-secondary hover:text-primary"
+            }`}
+          >
+            {ambito === valor && (
+              <motion.span
+                layoutId="ambito-activo"
+                className="absolute inset-0 rounded-sm bg-action-primary shadow-glow-gold"
+                transition={{ type: "spring", stiffness: 420, damping: 34 }}
+              />
+            )}
+            <Icono className="relative size-3.5" />
+            <span className="relative">{etiqueta}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="vidrio flex rounded-md p-1 shadow-[var(--shadow-card)]" role="tablist">
         {(Object.keys(METRICAS) as Metrica[]).map((m) => (
           <button
@@ -139,10 +182,12 @@ export function BarraFiltros({
   filtros,
   onCambiar,
   conteoTemas,
+  pnd,
 }: {
   filtros: Filtros;
   onCambiar: (f: Filtros) => void;
   conteoTemas: Record<string, number>;
+  pnd: PndResumen | null;
 }) {
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
@@ -159,7 +204,7 @@ export function BarraFiltros({
   const alternar = <T,>(lista: T[], valor: T) =>
     lista.includes(valor) ? lista.filter((x) => x !== valor) : [...lista, valor];
 
-  const activos = filtros.temas.length + filtros.canales.length;
+  const activos = filtros.temas.length + filtros.canales.length + filtros.ejes.length;
   const ordenTemas = Object.keys(TEMAS)
     .filter((t) => t !== SIN_TEMA || (conteoTemas[t] ?? 0) > 0)
     .sort((a, b) =>
@@ -240,6 +285,31 @@ export function BarraFiltros({
         </AnimatePresence>
       </div>
 
+      {/* Ejes del PND */}
+      {pnd && (
+        <div className="vidrio flex h-9 items-center gap-0.5 rounded-md p-1 shadow-[var(--shadow-card)]">
+          <span className="etiqueta px-1.5 text-[10px]">Ejes</span>
+          {pnd.ejes.map((eje) => {
+            const activo = filtros.ejes.includes(eje.id);
+            return (
+              <button
+                key={eje.id}
+                onClick={() => onCambiar({ ...filtros, ejes: alternar(filtros.ejes, eje.id) })}
+                aria-pressed={activo}
+                title={`Eje ${eje.numero} · ${eje.nombre}`}
+                className={`cifra grid size-7 place-items-center rounded-sm text-xs font-bold transition-colors ${
+                  activo
+                    ? "bg-action-primary text-action-primary-text"
+                    : "text-secondary hover:bg-white/8 hover:text-primary"
+                }`}
+              >
+                {eje.numero}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="vidrio flex h-9 items-center gap-0.5 rounded-md p-1 shadow-[var(--shadow-card)]">
         {(Object.keys(CANALES) as Canal[]).map((c) => {
           const { etiqueta, icono: Icono } = CANALES[c];
@@ -267,7 +337,7 @@ export function BarraFiltros({
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -8 }}
-            onClick={() => onCambiar({ temas: [], canales: [] })}
+            onClick={() => onCambiar({ temas: [], canales: [], ejes: [] })}
             className="vidrio flex h-9 items-center gap-1.5 rounded-md px-3 text-xs text-secondary hover:text-primary"
           >
             <X className="size-3.5" /> Limpiar

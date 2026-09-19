@@ -5,6 +5,8 @@
 // - Fusiona los municipios que vienen partidos en varias features con el mismo
 //   código, para que el estado por código pinte el municipio completo.
 // - Escribe la caja (bbox) de cada departamento para acercar el mapa.
+// - Adelgaza el mapa mundial: 177 países con ~170 propiedades cada uno pasan a
+//   código, nombre en español, continente y punto de etiqueta.
 //
 // Los originales no se tocan. Uso: node scripts/preparar-geo.mjs
 
@@ -15,21 +17,23 @@ const raiz = new URL("..", import.meta.url).pathname;
 const leer = (f) => JSON.parse(readFileSync(join(raiz, "public/data", f), "utf8"));
 
 const redondear = (n) => Math.round(n * 1e5) / 1e5;
+// A escala mundial, 3 decimales (~100 m) sobran y pesan la mitad.
+const redondearMundo = (n) => Math.round(n * 1e3) / 1e3;
 
-function anillo(coords) {
+function anillo(coords, precision = redondear) {
   const out = [];
   for (const [x, y] of coords) {
-    const p = [redondear(x), redondear(y)];
+    const p = [precision(x), precision(y)];
     const u = out[out.length - 1];
     if (!u || u[0] !== p[0] || u[1] !== p[1]) out.push(p);
   }
   return out.length >= 4 ? out : null;
 }
 
-function poligonos(geom) {
+function poligonos(geom, precision = redondear) {
   const lista = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
   return lista
-    .map((pol) => pol.map(anillo).filter(Boolean))
+    .map((pol) => pol.map((c) => anillo(c, precision)).filter(Boolean))
     .filter((pol) => pol.length > 0);
 }
 
@@ -45,12 +49,12 @@ function caja(pols) {
   return [x0, y0, x1, y1].map(redondear);
 }
 
-function coleccion(features, codigoDe, extra = () => ({})) {
+function coleccion(features, codigoDe, extra = () => ({}), precision = redondear) {
   const porCodigo = new Map();
   for (const f of features) {
     const codigo = codigoDe(f.properties);
     const actual = porCodigo.get(codigo);
-    const pols = poligonos(f.geometry);
+    const pols = poligonos(f.geometry, precision);
     if (actual) actual.pols.push(...pols);
     else porCodigo.set(codigo, { pols, props: { codigo, ...extra(f.properties) } });
   }
@@ -77,14 +81,28 @@ const mpios = coleccion(
   (p) => ({ dpto: p.DPTO }),
 );
 
+// Mapa mundial para la vista internacional.
+const paises = coleccion(
+  leer("internacional.geojson").features,
+  (p) => p.ADM0_A3,
+  (p) => ({
+    nombre: p.NAME_ES || p.NAME || p.ADMIN,
+    continente: p.CONTINENT,
+    lon: redondearMundo(p.LABEL_X),
+    lat: redondearMundo(p.LABEL_Y),
+  }),
+  redondearMundo,
+);
+
 const cajas = {};
 for (const [codigo, { pols }] of deptos.porCodigo) cajas[codigo] = caja(pols);
 
 mkdirSync(join(raiz, "public/data/geo"), { recursive: true });
 writeFileSync(join(raiz, "public/data/geo/departamentos.json"), JSON.stringify(deptos.geojson));
 writeFileSync(join(raiz, "public/data/geo/municipios.json"), JSON.stringify(mpios.geojson));
+writeFileSync(join(raiz, "public/data/geo/paises.json"), JSON.stringify(paises.geojson));
 writeFileSync(join(raiz, "src/lib/geo/cajas.json"), JSON.stringify(cajas, null, 2) + "\n");
 
 console.log(
-  `departamentos: ${deptos.porCodigo.size} · municipios: ${mpios.porCodigo.size} · cajas: ${Object.keys(cajas).length}`,
+  `departamentos: ${deptos.porCodigo.size} · municipios: ${mpios.porCodigo.size} · cajas: ${Object.keys(cajas).length} · países: ${paises.porCodigo.size}`,
 );

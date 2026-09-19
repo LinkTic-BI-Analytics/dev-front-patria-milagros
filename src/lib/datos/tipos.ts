@@ -21,12 +21,17 @@ export type AporteResumen = {
   ubicacion: EstadoUbicacion;
   /** Municipios confirmados (código DIVIPOLA de 5 dígitos) */
   municipios: string[];
+  /** Eje y línea del PND: de la síntesis vigente si la hay, si no del relato original. */
+  eje: string | null;
+  linea: string | null;
 };
 
 export type ExpedienteResumen = {
   id: string;
   temas: string[];
   canales: Canal[];
+  /** Ejes del PND de los aportes que lo alimentan. */
+  ejes: string[];
   estado: EstadoAtencion;
   municipios: string[];
 };
@@ -38,6 +43,7 @@ export type AlertaResumen = {
   municipios: string[];
   etapa: EtapaAlerta;
   devuelta: boolean;
+  eje: string | null;
 };
 
 /** La síntesis vigente de un aporte: la última versión, que es la que manda. */
@@ -60,6 +66,10 @@ export type PndResumen = {
     numero: number;
     nombre: string;
     vision: string;
+    /** Indicadores preliminares de la batería; `null` si el eje aún no tiene. */
+    indicadores: number | null;
+    /** Área del DNP que lidera el eje. */
+    area: string;
     lineas: { id: string; nombre: string }[];
   }[];
 };

@@ -17,7 +17,7 @@ import type {
   ExpedienteResumen,
 } from "./tipos";
 
-export type Filtros = { temas: string[]; canales: Canal[] };
+export type Filtros = { temas: string[]; canales: Canal[]; ejes: string[] };
 
 export type Filtrados = {
   aportes: AporteResumen[];
@@ -28,14 +28,20 @@ export type Filtrados = {
 const cruza = <T,>(lista: T[], seleccion: T[]) =>
   seleccion.length === 0 || lista.some((x) => seleccion.includes(x));
 
-export function filtrar(datos: DatosTablero, { temas, canales }: Filtros): Filtrados {
+export function filtrar(datos: DatosTablero, { temas, canales, ejes }: Filtros): Filtrados {
+  // Un aporte sin eje del PND no pasa el filtro por eje: no se asigna por descarte.
+  const ejeCruza = (propios: (string | null)[]) =>
+    ejes.length === 0 || propios.some((e) => e !== null && ejes.includes(e));
+
   return {
     aportes: datos.aportes.filter(
-      (a) => cruza([a.tema ?? SIN_TEMA], temas) && cruza([a.canal], canales),
+      (a) => cruza([a.tema ?? SIN_TEMA], temas) && cruza([a.canal], canales) && ejeCruza([a.eje]),
     ),
-    expedientes: datos.expedientes.filter((e) => cruza(e.temas, temas) && cruza(e.canales, canales)),
+    expedientes: datos.expedientes.filter(
+      (e) => cruza(e.temas, temas) && cruza(e.canales, canales) && ejeCruza(e.ejes),
+    ),
     alertas: datos.alertas.filter(
-      (a) => cruza([a.tema ?? SIN_TEMA], temas) && cruza([a.canal], canales),
+      (a) => cruza([a.tema ?? SIN_TEMA], temas) && cruza([a.canal], canales) && ejeCruza([a.eje]),
     ),
   };
 }

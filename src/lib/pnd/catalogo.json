@@ -6,30 +6,76 @@
       "numero": 1,
       "nombre": "Reconstrucción, Transformación y Resiliencia",
       "vision": "Recuperar y transformar los territorios afectados: infraestructura, vivienda, servicios esenciales, reactivación económica y gestión del riesgo en todo el país.",
+      "indicadores": 37,
+      "area": "Subdirección de Gestión Ambiental",
       "lineas": [
         {
           "id": "reconstruccion_occidente",
           "nombre": "Reconstrucción física del occidente colombiano",
-          "sectores": ["vivienda_ciudad_territorio", "transporte"],
-          "claves": ["reconstruccion", "reconstruir", "damnificados", "tragedia", "quedo destruido", "quedo destruida"]
+          "sectores": [
+            "vivienda_ciudad_territorio",
+            "transporte"
+          ],
+          "claves": [
+            "reconstruccion",
+            "reconstruir",
+            "damnificados",
+            "tragedia",
+            "quedo destruido",
+            "quedo destruida"
+          ]
         },
         {
           "id": "recuperacion_productiva",
           "nombre": "Recuperación productiva de los territorios afectados",
-          "sectores": ["agricultura_desarrollo_rural", "comercio_industria_turismo"],
-          "claves": ["perdimos", "perdieron", "perdidas", "territorios afectados", "recuperar la produccion"]
+          "sectores": [
+            "agricultura_desarrollo_rural",
+            "comercio_industria_turismo"
+          ],
+          "claves": [
+            "perdimos",
+            "perdieron",
+            "perdidas",
+            "territorios afectados",
+            "recuperar la produccion"
+          ]
         },
         {
           "id": "financiacion_reconstruccion",
           "nombre": "Financiación de la reconstrucción",
-          "sectores": ["hacienda"],
-          "claves": ["recursos para reconstruir", "plata para reconstruir", "financiacion de la reconstruccion"]
+          "sectores": [
+            "hacienda"
+          ],
+          "claves": [
+            "recursos para reconstruir",
+            "plata para reconstruir",
+            "financiacion de la reconstruccion"
+          ]
         },
         {
           "id": "prevencion_adaptacion",
           "nombre": "Prevención y adaptación a nivel nacional",
-          "sectores": ["vivienda_ciudad_territorio", "ambiente_desarrollo_sostenible", "interior"],
-          "claves": ["invierno", "inundan", "inunda", "inundacion", "llueve", "lluvias", "zona de riesgo", "reubicacion", "vendaval", "derrumbe", "deslizamiento", "creciente", "sequia", "emergencia"]
+          "sectores": [
+            "vivienda_ciudad_territorio",
+            "ambiente_desarrollo_sostenible",
+            "interior"
+          ],
+          "claves": [
+            "invierno",
+            "inundan",
+            "inunda",
+            "inundacion",
+            "llueve",
+            "lluvias",
+            "zona de riesgo",
+            "reubicacion",
+            "vendaval",
+            "derrumbe",
+            "deslizamiento",
+            "creciente",
+            "sequia",
+            "emergencia"
+          ]
         }
       ]
     },
@@ -38,60 +84,155 @@
       "numero": 2,
       "nombre": "Patriotismo Constitucional",
       "vision": "Articular seguridad, justicia y democracia para garantizar la paz, con participación ciudadana, acceso a las decisiones de gobierno y una política exterior tradicional.",
+      "indicadores": 51,
+      "area": "Dirección de Justicia, Seguridad y Defensa",
       "lineas": [
         {
           "id": "grupos_armados",
           "nombre": "Política frente a grupos armados, control territorial y monopolio de la fuerza",
-          "sectores": ["defensa", "inteligencia"],
-          "claves": ["grupos armados", "grupo armado", "disidencias", "guerrilla", "paramilitares", "combates", "reclutamiento", "control territorial"]
+          "sectores": [
+            "defensa",
+            "inteligencia"
+          ],
+          "claves": [
+            "grupos armados",
+            "grupo armado",
+            "disidencias",
+            "guerrilla",
+            "paramilitares",
+            "combates",
+            "reclutamiento",
+            "control territorial"
+          ]
         },
         {
           "id": "economias_ilegales",
           "nombre": "Economías ilegales y desfinanciación del crimen",
-          "sectores": ["defensa", "justicia", "minas_energia"],
-          "claves": ["cultivos ilicitos", "coca", "mineria ilegal", "narcotrafico", "contrabando", "extorsion", "vacuna"]
+          "sectores": [
+            "defensa",
+            "justicia",
+            "minas_energia"
+          ],
+          "claves": [
+            "cultivos ilicitos",
+            "coca",
+            "mineria ilegal",
+            "narcotrafico",
+            "contrabando",
+            "extorsion",
+            "vacuna"
+          ]
         },
         {
           "id": "justicia_efectiva",
           "nombre": "Justicia efectiva y sistema penitenciario",
-          "sectores": ["justicia"],
-          "claves": ["linderos", "denunciar", "denuncia", "demanda", "juzgado", "fiscalia", "carcel", "proceso judicial"]
+          "sectores": [
+            "justicia"
+          ],
+          "claves": [
+            "linderos",
+            "denunciar",
+            "denuncia",
+            "demanda",
+            "juzgado",
+            "fiscalia",
+            "carcel",
+            "proceso judicial"
+          ]
         },
         {
           "id": "seguridad_ciudadana",
           "nombre": "Seguridad ciudadana, convivencia, reconciliación y protección",
-          "sectores": ["defensa", "interior", "justicia"],
-          "claves": ["robos", "robo", "atracos", "hurto", "inseguridad", "presencia de nadie", "policia", "no sale de noche", "microtrafico", "convivencia", "peleas"]
+          "sectores": [
+            "defensa",
+            "interior",
+            "justicia"
+          ],
+          "claves": [
+            "robos",
+            "robo",
+            "atracos",
+            "hurto",
+            "inseguridad",
+            "presencia de nadie",
+            "policia",
+            "no sale de noche",
+            "microtrafico",
+            "convivencia",
+            "peleas"
+          ]
         },
         {
           "id": "territorios_guerra",
           "nombre": "Transformación de los territorios que más han sufrido la guerra",
-          "sectores": ["inclusion_social_reconciliacion", "interior"],
-          "claves": ["conflicto armado", "posconflicto", "zona de conflicto", "pdet"]
+          "sectores": [
+            "inclusion_social_reconciliacion",
+            "interior"
+          ],
+          "claves": [
+            "conflicto armado",
+            "posconflicto",
+            "zona de conflicto",
+            "pdet"
+          ]
         },
         {
           "id": "minas_antipersonal",
           "nombre": "Minas antipersonal",
-          "sectores": ["defensa"],
-          "claves": ["minas antipersonal", "mina antipersonal", "artefacto explosivo", "desminado"]
+          "sectores": [
+            "defensa"
+          ],
+          "claves": [
+            "minas antipersonal",
+            "mina antipersonal",
+            "artefacto explosivo",
+            "desminado"
+          ]
         },
         {
           "id": "victimas",
           "nombre": "Oportunidades para las víctimas",
-          "sectores": ["inclusion_social_reconciliacion", "justicia"],
-          "claves": ["victimas", "victima", "desplazados", "desplazamiento", "desplazadas"]
+          "sectores": [
+            "inclusion_social_reconciliacion",
+            "justicia"
+          ],
+          "claves": [
+            "victimas",
+            "victima",
+            "desplazados",
+            "desplazamiento",
+            "desplazadas"
+          ]
         },
         {
           "id": "democracia",
           "nombre": "Fortalecimiento de la democracia",
-          "sectores": ["interior", "presidencia"],
-          "claves": ["compra de votos", "elecciones", "participacion ciudadana", "junta de accion comunal", "veeduria", "consulta previa"]
+          "sectores": [
+            "interior",
+            "presidencia"
+          ],
+          "claves": [
+            "compra de votos",
+            "elecciones",
+            "participacion ciudadana",
+            "junta de accion comunal",
+            "veeduria",
+            "consulta previa"
+          ]
         },
         {
           "id": "politica_exterior",
           "nombre": "Política exterior",
-          "sectores": ["relaciones_exteriores"],
-          "claves": ["frontera", "migrantes", "migracion", "cancilleria", "consulado"]
+          "sectores": [
+            "relaciones_exteriores"
+          ],
+          "claves": [
+            "frontera",
+            "migrantes",
+            "migracion",
+            "cancilleria",
+            "consulado"
+          ]
         }
       ]
     },
@@ -100,60 +241,185 @@
       "numero": 3,
       "nombre": "Milagro Social",
       "vision": "Mejorar las condiciones de vida y ampliar las oportunidades de las familias, combinando protección social y servicios esenciales medibles y sostenibles.",
+      "indicadores": 100,
+      "area": "Dirección de Desarrollo Social",
       "lineas": [
         {
           "id": "salud_familia",
           "nombre": "Salud para la familia",
-          "sectores": ["salud_proteccion_social"],
-          "claves": ["salud", "medico", "medicos", "puesto de salud", "hospital", "cita", "citas", "eps", "medicamentos", "enfermera", "urgencias", "vacunacion"]
+          "sectores": [
+            "salud_proteccion_social"
+          ],
+          "claves": [
+            "salud",
+            "medico",
+            "medicos",
+            "puesto de salud",
+            "hospital",
+            "cita",
+            "citas",
+            "eps",
+            "medicamentos",
+            "enfermera",
+            "urgencias",
+            "vacunacion"
+          ]
         },
         {
           "id": "educacion_trabajo",
           "nombre": "Educación y formación para el trabajo",
-          "sectores": ["educacion", "trabajo"],
-          "claves": ["profesor", "profesores", "docente", "docentes", "escuela", "colegio", "sede educativa", "salones", "clases", "educacion", "sena", "universidad"]
+          "sectores": [
+            "educacion",
+            "trabajo"
+          ],
+          "claves": [
+            "profesor",
+            "profesores",
+            "docente",
+            "docentes",
+            "escuela",
+            "colegio",
+            "sede educativa",
+            "salones",
+            "clases",
+            "educacion",
+            "sena",
+            "universidad"
+          ]
         },
         {
           "id": "dignidad_poblaciones",
           "nombre": "Dignidad para personas con discapacidad, cuidadores, veteranos y adultos mayores",
-          "sectores": ["inclusion_social_reconciliacion", "salud_proteccion_social", "trabajo"],
-          "claves": ["adultos mayores", "adulto mayor", "discapacidad", "cuidadores", "veteranos", "abuelos", "subsidio", "pension"]
+          "sectores": [
+            "inclusion_social_reconciliacion",
+            "salud_proteccion_social",
+            "trabajo"
+          ],
+          "claves": [
+            "adultos mayores",
+            "adulto mayor",
+            "discapacidad",
+            "cuidadores",
+            "veteranos",
+            "abuelos",
+            "subsidio",
+            "pension"
+          ]
         },
         {
           "id": "mujeres_cuidado",
           "nombre": "Mujeres, cuidado y equidad",
-          "sectores": ["inclusion_social_reconciliacion", "justicia", "interior"],
-          "claves": ["mujeres", "violencia", "comisaria", "cuidado", "dejar a los ninos", "madres"]
+          "sectores": [
+            "inclusion_social_reconciliacion",
+            "justicia",
+            "interior"
+          ],
+          "claves": [
+            "mujeres",
+            "violencia",
+            "comisaria",
+            "cuidado",
+            "dejar a los ninos",
+            "madres"
+          ]
         },
         {
           "id": "vivienda_propiedad",
           "nombre": "Vivienda y propiedad",
-          "sectores": ["vivienda_ciudad_territorio"],
-          "claves": ["vivienda", "casas", "casa", "titulacion", "escrituras", "arriendo", "mejoramiento de vivienda"]
+          "sectores": [
+            "vivienda_ciudad_territorio"
+          ],
+          "claves": [
+            "vivienda",
+            "casas",
+            "casa",
+            "titulacion",
+            "escrituras",
+            "arriendo",
+            "mejoramiento de vivienda"
+          ]
         },
         {
           "id": "cultura_deporte",
           "nombre": "Cultura y deporte",
-          "sectores": ["culturas", "deporte_recreacion"],
-          "claves": ["cancha", "deporte", "deportes", "cultura", "caseta comunal", "biblioteca", "parque", "recreacion", "donde reunirse", "casa de la cultura"]
+          "sectores": [
+            "culturas",
+            "deporte_recreacion"
+          ],
+          "claves": [
+            "cancha",
+            "deporte",
+            "deportes",
+            "cultura",
+            "caseta comunal",
+            "biblioteca",
+            "parque",
+            "recreacion",
+            "donde reunirse",
+            "casa de la cultura"
+          ]
         },
         {
           "id": "bienestar_animal",
           "nombre": "Bienestar animal",
-          "sectores": ["ambiente_desarrollo_sostenible"],
-          "claves": ["perros", "gatos", "esterilizacion", "animales", "maltrato animal", "sin dueno"]
+          "sectores": [
+            "ambiente_desarrollo_sostenible"
+          ],
+          "claves": [
+            "perros",
+            "gatos",
+            "esterilizacion",
+            "animales",
+            "maltrato animal",
+            "sin dueno"
+          ]
         },
         {
           "id": "seguridad_alimentaria",
           "nombre": "Seguridad alimentaria",
-          "sectores": ["agricultura_desarrollo_rural", "inclusion_social_reconciliacion", "educacion"],
-          "claves": ["programa de alimentacion", "alimentacion", "comida", "hambre", "alimentos", "mercados", "pae"]
+          "sectores": [
+            "agricultura_desarrollo_rural",
+            "inclusion_social_reconciliacion",
+            "educacion"
+          ],
+          "claves": [
+            "programa de alimentacion",
+            "alimentacion",
+            "comida",
+            "hambre",
+            "alimentos",
+            "mercados",
+            "pae"
+          ]
         },
         {
           "id": "servicios_publicos",
           "nombre": "Cobertura de servicios públicos",
-          "sectores": ["vivienda_ciudad_territorio", "minas_energia"],
-          "claves": ["agua", "acueducto", "alcantarillado", "agua potable", "agua llega", "no hay agua", "falta agua", "tubo", "bombear", "energia", "luz", "postes", "cables", "alumbrado", "gas", "basura", "carro de la basura", "residuos", "aseo"]
+          "sectores": [
+            "vivienda_ciudad_territorio",
+            "minas_energia"
+          ],
+          "claves": [
+            "agua",
+            "acueducto",
+            "alcantarillado",
+            "agua potable",
+            "agua llega",
+            "no hay agua",
+            "falta agua",
+            "tubo",
+            "bombear",
+            "energia",
+            "luz",
+            "postes",
+            "cables",
+            "alumbrado",
+            "gas",
+            "basura",
+            "carro de la basura",
+            "residuos",
+            "aseo"
+          ]
         }
       ]
     },
@@ -162,78 +428,201 @@
       "numero": 4,
       "nombre": "Milagro Económico",
       "vision": "Generar riqueza para cada ciudadano e impulsar un crecimiento del PIB del 6 % con seis sectores estratégicos.",
+      "indicadores": 106,
+      "area": "Dirección de Infraestructura y Energía Sostenible",
       "lineas": [
         {
           "id": "inversion_privada",
           "nombre": "Recuperación de la inversión privada",
-          "sectores": ["comercio_industria_turismo", "hacienda"],
-          "claves": ["inversion privada", "inversionistas", "empresas se fueron"]
+          "sectores": [
+            "comercio_industria_turismo",
+            "hacienda"
+          ],
+          "claves": [
+            "inversion privada",
+            "inversionistas",
+            "empresas se fueron"
+          ]
         },
         {
           "id": "empleo_formal",
           "nombre": "Reactivación, inversión y empleo formal",
-          "sectores": ["trabajo", "comercio_industria_turismo"],
-          "claves": ["empleo", "trabajo", "trabajar", "contratan", "desempleo", "mano de obra", "en que trabajar"]
+          "sectores": [
+            "trabajo",
+            "comercio_industria_turismo"
+          ],
+          "claves": [
+            "empleo",
+            "trabajo",
+            "trabajar",
+            "contratan",
+            "desempleo",
+            "mano de obra",
+            "en que trabajar"
+          ]
         },
         {
           "id": "mipymes",
           "nombre": "Empresas y MIPYMES",
-          "sectores": ["comercio_industria_turismo"],
-          "claves": ["emprendimiento", "negocio", "negocios", "microempresa", "mipymes", "comerciantes", "credito"]
+          "sectores": [
+            "comercio_industria_turismo"
+          ],
+          "claves": [
+            "emprendimiento",
+            "negocio",
+            "negocios",
+            "microempresa",
+            "mipymes",
+            "comerciantes",
+            "credito"
+          ]
         },
         {
           "id": "transformacion_digital",
           "nombre": "Transformación digital y conectividad",
-          "sectores": ["tic"],
-          "claves": ["internet", "senal", "celular", "conectarse", "conectividad", "wifi", "computadores"]
+          "sectores": [
+            "tic"
+          ],
+          "claves": [
+            "internet",
+            "senal",
+            "celular",
+            "conectarse",
+            "conectividad",
+            "wifi",
+            "computadores"
+          ]
         },
         {
           "id": "comercio_internacional",
           "nombre": "Comercio e inserción internacional",
-          "sectores": ["comercio_industria_turismo", "relaciones_exteriores"],
-          "claves": ["exportar", "exportacion", "importaciones", "aranceles", "libre comercio"]
+          "sectores": [
+            "comercio_industria_turismo",
+            "relaciones_exteriores"
+          ],
+          "claves": [
+            "exportar",
+            "exportacion",
+            "importaciones",
+            "aranceles",
+            "libre comercio"
+          ]
         },
         {
           "id": "agua_biodiversidad",
           "nombre": "Agua, biodiversidad y comunidad",
-          "sectores": ["ambiente_desarrollo_sostenible", "vivienda_ciudad_territorio"],
-          "claves": ["rio", "quebrada", "descarga", "contaminacion", "contaminada", "talando", "tala", "deforestacion", "ronda de la quebrada", "caudal", "nacimiento", "bosque", "humedal", "biodiversidad"]
+          "sectores": [
+            "ambiente_desarrollo_sostenible",
+            "vivienda_ciudad_territorio"
+          ],
+          "claves": [
+            "rio",
+            "quebrada",
+            "descarga",
+            "contaminacion",
+            "contaminada",
+            "talando",
+            "tala",
+            "deforestacion",
+            "ronda de la quebrada",
+            "caudal",
+            "nacimiento",
+            "bosque",
+            "humedal",
+            "biodiversidad"
+          ]
         },
         {
           "id": "estrategico_minero_energetico",
           "nombre": "Sector estratégico minero-energético",
-          "sectores": ["minas_energia"],
-          "claves": ["mineria", "petroleo", "hidrocarburos", "gas natural", "energia solar", "transmision electrica"]
+          "sectores": [
+            "minas_energia"
+          ],
+          "claves": [
+            "mineria",
+            "petroleo",
+            "hidrocarburos",
+            "gas natural",
+            "energia solar",
+            "transmision electrica"
+          ]
         },
         {
           "id": "estrategico_vivienda_infraestructura",
           "nombre": "Sector estratégico de vivienda e infraestructura",
-          "sectores": ["transporte", "vivienda_ciudad_territorio"],
-          "claves": ["via", "vias", "carretera", "puente", "trocha", "pavimentacion", "infraestructura", "cabecera", "camino"]
+          "sectores": [
+            "transporte",
+            "vivienda_ciudad_territorio"
+          ],
+          "claves": [
+            "via",
+            "vias",
+            "carretera",
+            "puente",
+            "trocha",
+            "pavimentacion",
+            "infraestructura",
+            "cabecera",
+            "camino"
+          ]
         },
         {
           "id": "estrategico_agroindustria",
           "nombre": "Sector estratégico de agroindustria",
-          "sectores": ["agricultura_desarrollo_rural"],
-          "claves": ["cosecha", "cultivos", "producto", "precio justo", "campesinos", "ganado", "animales de cria", "ayuda tecnica", "asistencia tecnica", "comercializar"]
+          "sectores": [
+            "agricultura_desarrollo_rural"
+          ],
+          "claves": [
+            "cosecha",
+            "cultivos",
+            "producto",
+            "precio justo",
+            "campesinos",
+            "ganado",
+            "animales de cria",
+            "ayuda tecnica",
+            "asistencia tecnica",
+            "comercializar"
+          ]
         },
         {
           "id": "estrategico_turismo",
           "nombre": "Sector estratégico de turismo",
-          "sectores": ["comercio_industria_turismo"],
-          "claves": ["turismo", "turistas", "hoteles", "ecoturismo"]
+          "sectores": [
+            "comercio_industria_turismo"
+          ],
+          "claves": [
+            "turismo",
+            "turistas",
+            "hoteles",
+            "ecoturismo"
+          ]
         },
         {
           "id": "estrategico_cti",
           "nombre": "Sector estratégico de ciencia, tecnología e innovación",
-          "sectores": ["ciencia_tecnologia_innovacion"],
-          "claves": ["investigacion", "innovacion", "ciencia", "tecnologia"]
+          "sectores": [
+            "ciencia_tecnologia_innovacion"
+          ],
+          "claves": [
+            "investigacion",
+            "innovacion",
+            "ciencia",
+            "tecnologia"
+          ]
         },
         {
           "id": "estrategico_bioeconomia",
           "nombre": "Sector estratégico de bioeconomía",
-          "sectores": ["ambiente_desarrollo_sostenible", "agricultura_desarrollo_rural"],
-          "claves": ["bioeconomia", "productos naturales", "biocomercio"]
+          "sectores": [
+            "ambiente_desarrollo_sostenible",
+            "agricultura_desarrollo_rural"
+          ],
+          "claves": [
+            "bioeconomia",
+            "productos naturales",
+            "biocomercio"
+          ]
         }
       ]
     },
@@ -242,30 +631,67 @@
       "numero": 5,
       "nombre": "Colombia de las regiones",
       "vision": "Impulsar la descentralización y la seguridad con macroproyectos en 12 nodos regionales, transfiriendo recursos y competencias y fortaleciendo a las entidades territoriales.",
+      "indicadores": null,
+      "area": "Subdirección General de Descentralización y Desarrollo Territorial",
       "lineas": [
         {
           "id": "macroproyectos",
           "nombre": "Macroproyectos regionales",
-          "sectores": ["planeacion", "transporte"],
-          "claves": ["macroproyecto", "megaproyecto", "proyecto regional", "nodos regionales"]
+          "sectores": [
+            "planeacion",
+            "transporte"
+          ],
+          "claves": [
+            "macroproyecto",
+            "megaproyecto",
+            "proyecto regional",
+            "nodos regionales"
+          ]
         },
         {
           "id": "capacidad_territorial",
           "nombre": "Fortalecimiento de la capacidad institucional territorial",
-          "sectores": ["interior", "planeacion", "funcion_publica"],
-          "claves": ["alcaldia", "gobernacion", "concejo", "a quien le corresponde"]
+          "sectores": [
+            "interior",
+            "planeacion",
+            "funcion_publica"
+          ],
+          "claves": [
+            "alcaldia",
+            "gobernacion",
+            "concejo",
+            "a quien le corresponde"
+          ]
         },
         {
           "id": "competencias_recursos",
           "nombre": "Competencias y recursos",
-          "sectores": ["hacienda", "planeacion"],
-          "claves": ["regalias", "transferencias", "presupuesto del municipio", "recursos del municipio"]
+          "sectores": [
+            "hacienda",
+            "planeacion"
+          ],
+          "claves": [
+            "regalias",
+            "transferencias",
+            "presupuesto del municipio",
+            "recursos del municipio"
+          ]
         },
         {
           "id": "articulacion_nacion_territorio",
           "nombre": "Articulación Nación–territorio",
-          "sectores": ["interior", "planeacion", "presidencia"],
-          "claves": ["gobierno nacional", "ministerio", "entidades nacionales", "el estado no llega", "abandono del estado"]
+          "sectores": [
+            "interior",
+            "planeacion",
+            "presidencia"
+          ],
+          "claves": [
+            "gobierno nacional",
+            "ministerio",
+            "entidades nacionales",
+            "el estado no llega",
+            "abandono del estado"
+          ]
         }
       ]
     },
@@ -274,36 +700,86 @@
       "numero": 6,
       "nombre": "Transformación del Estado",
       "vision": "Un Estado más eficiente, pequeño, tecnológico y cercano a la ciudadanía, que mejore la percepción ciudadana sobre lo público.",
+      "indicadores": 18,
+      "area": "Subdirección General SGISE",
       "lineas": [
         {
           "id": "modernizacion_estado",
           "nombre": "Reducción y modernización del Estado",
-          "sectores": ["funcion_publica", "presidencia"],
-          "claves": ["tramites", "tramitologia", "papeleo", "burocracia", "ventanilla"]
+          "sectores": [
+            "funcion_publica",
+            "presidencia"
+          ],
+          "claves": [
+            "tramites",
+            "tramitologia",
+            "papeleo",
+            "burocracia",
+            "ventanilla"
+          ]
         },
         {
           "id": "anticorrupcion",
           "nombre": "Lucha contra la corrupción",
-          "sectores": ["presidencia", "justicia", "funcion_publica"],
-          "claves": ["corrupcion", "corruptos", "robaron la plata", "desvio de recursos", "coima"]
+          "sectores": [
+            "presidencia",
+            "justicia",
+            "funcion_publica"
+          ],
+          "claves": [
+            "corrupcion",
+            "corruptos",
+            "robaron la plata",
+            "desvio de recursos",
+            "coima"
+          ]
         },
         {
           "id": "transparencia_contratacion",
           "nombre": "Transparencia de la contratación",
-          "sectores": ["planeacion", "funcion_publica", "hacienda"],
-          "claves": ["contratista", "contratacion", "licitacion", "obra inconclusa", "elefante blanco", "obra abandonada"]
+          "sectores": [
+            "planeacion",
+            "funcion_publica",
+            "hacienda"
+          ],
+          "claves": [
+            "contratista",
+            "contratacion",
+            "licitacion",
+            "obra inconclusa",
+            "elefante blanco",
+            "obra abandonada"
+          ]
         },
         {
           "id": "gestion_resultados",
           "nombre": "Gestión pública por resultados",
-          "sectores": ["funcion_publica", "planeacion", "estadistica", "presidencia"],
-          "claves": ["queja", "ninguna respuesta", "derecho de peticion", "atencion al ciudadano"]
+          "sectores": [
+            "funcion_publica",
+            "planeacion",
+            "estadistica",
+            "presidencia"
+          ],
+          "claves": [
+            "queja",
+            "ninguna respuesta",
+            "derecho de peticion",
+            "atencion al ciudadano"
+          ]
         },
         {
           "id": "estabilidad_fiscal",
           "nombre": "Estabilidad macroeconómica y sostenibilidad fiscal",
-          "sectores": ["hacienda"],
-          "claves": ["impuestos", "inflacion", "costo de vida", "precios", "deficit"]
+          "sectores": [
+            "hacienda"
+          ],
+          "claves": [
+            "impuestos",
+            "inflacion",
+            "costo de vida",
+            "precios",
+            "deficit"
+          ]
         }
       ]
     }

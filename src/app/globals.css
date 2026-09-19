@@ -231,3 +231,24 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Cielo del modal de ejes: puntos tenues, sin imágenes */
+.estrellas {
+  background-image:
+    radial-gradient(1.4px 1.4px at 12% 22%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1.2px 1.2px at 78% 14%, rgba(255, 255, 255, 0.4), transparent 60%),
+    radial-gradient(1.6px 1.6px at 34% 72%, rgba(255, 229, 138, 0.45), transparent 60%),
+    radial-gradient(1.2px 1.2px at 64% 58%, rgba(255, 255, 255, 0.35), transparent 60%),
+    radial-gradient(1.1px 1.1px at 88% 78%, rgba(255, 255, 255, 0.3), transparent 60%),
+    radial-gradient(1.3px 1.3px at 22% 88%, rgba(129, 173, 235, 0.4), transparent 60%);
+  animation: titilar 6s ease-in-out infinite alternate;
+}
+
+@keyframes titilar {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 0.85;
+  }
+}

@@ -11,8 +11,17 @@ import {
   nombrePropio,
   type Metrica,
 } from "@/lib/datos/catalogos";
-import { ejeMeses, filtrar, resumir, valoresMapa, type Filtros } from "@/lib/datos/agregar";
+import {
+  ejeMeses,
+  enTerritorio,
+  filtrar,
+  resumir,
+  valoresMapa,
+  type Filtros,
+} from "@/lib/datos/agregar";
+import { cifrasPorPais } from "@/lib/datos/internacional";
 import type { DatosTablero } from "@/lib/datos/tipos";
+import type { Ambito } from "@/components/mapa/MapaColombia";
 import { Encabezado } from "./Encabezado";
 import { BarraFiltros, MigaTerritorio, SelectorMetrica } from "./ControlesMapa";
 import { TarjetasKpi } from "./TarjetasKpi";
@@ -30,14 +39,19 @@ const MapaColombia = dynamic(() => import("@/components/mapa/MapaColombia"), {
   loading: () => <div className="shimmer absolute inset-0" />,
 });
 
+// El modal solo se descarga cuando alguien lo abre.
+const ModalEjes = dynamic(() => import("@/components/ejes/ModalEjes").then((m) => m.ModalEjes));
+
 const suave = [0.22, 1, 0.36, 1] as const;
 
 export function Tablero({ datos }: { datos: DatosTablero }) {
-  const [filtros, setFiltros] = useState<Filtros>({ temas: [], canales: [] });
+  const [filtros, setFiltros] = useState<Filtros>({ temas: [], canales: [], ejes: [] });
   const [metrica, setMetrica] = useState<Metrica>("aportes");
   const [departamento, setDepartamento] = useState<string | null>(null);
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const [modo3d, setModo3d] = useState(false);
+  const [ambito, setAmbito] = useState<Ambito>("nacional");
+  const [ejesAbiertos, setEjesAbiertos] = useState(false);
 
   const eje = useMemo(() => ejeMeses(datos), [datos]);
   const mesEnCurso =
@@ -54,16 +68,31 @@ export function Tablero({ datos }: { datos: DatosTablero }) {
     }),
     [filtrados],
   );
-  const codigo = seleccion ?? departamento;
+  const codigo = ambito === "internacional" ? null : (seleccion ?? departamento);
+  const cifrasPaises = useMemo(() => cifrasPorPais(filtrados), [filtrados]);
   const resumen = useMemo(() => resumir(filtrados, codigo, eje), [filtrados, codigo, eje]);
 
   // Conteo de temas sin el filtro de tema, para el selector.
   const conteoTemas = useMemo(() => {
     const conteo: Record<string, number> = {};
-    for (const a of filtrar(datos, { temas: [], canales: filtros.canales }).aportes)
+    for (const a of filtrar(datos, { temas: [], canales: filtros.canales, ejes: filtros.ejes })
+      .aportes)
       conteo[a.tema ?? SIN_TEMA] = (conteo[a.tema ?? SIN_TEMA] ?? 0) + 1;
     return conteo;
-  }, [datos, filtros.canales]);
+  }, [datos, filtros.canales, filtros.ejes]);
+
+  // Para el modal: participaciones por eje y por línea, sin el filtro de eje (si no,
+  // al filtrar un eje los demás aparecerían en cero).
+  const { conteosEje, conteosLinea } = useMemo(() => {
+    const porEje = new Map<string, number>();
+    const porLinea = new Map<string, number>();
+    for (const a of filtrar(datos, { ...filtros, ejes: [] }).aportes) {
+      if (!enTerritorio(a.municipios, codigo)) continue;
+      if (a.eje) porEje.set(a.eje, (porEje.get(a.eje) ?? 0) + 1);
+      if (a.linea) porLinea.set(a.linea, (porLinea.get(a.linea) ?? 0) + 1);
+    }
+    return { conteosEje: porEje, conteosLinea: porLinea };
+  }, [datos, filtros, codigo]);
 
   const entrar = useCallback((d: string) => {
     setDepartamento(d);
@@ -73,6 +102,22 @@ export function Tablero({ datos }: { datos: DatosTablero }) {
     setDepartamento(null);
     setSeleccion(null);
   }, []);
+  // Al mirar el mundo se sale del detalle territorial: son dos lecturas distintas.
+  const cambiarAmbito = useCallback(
+    (siguiente: Ambito) => {
+      setAmbito(siguiente);
+      if (siguiente === "internacional") salir();
+    },
+    [salir],
+  );
+  const alternarEje = useCallback(
+    (id: string) =>
+      setFiltros((f) => ({
+        ...f,
+        ejes: f.ejes.includes(id) ? f.ejes.filter((e) => e !== id) : [...f.ejes, id],
+      })),
+    [],
+  );
 
   const nombre = (c: string) =>
     nombrePropio(
@@ -96,7 +141,7 @@ export function Tablero({ datos }: { datos: DatosTablero }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [valores, metrica, departamento]);
 
-  const sinFiltros = !filtros.temas.length && !filtros.canales.length;
+  const sinFiltros = !filtros.temas.length && !filtros.canales.length && !filtros.ejes.length;
   const coincideControl =
     sinFiltros &&
     datos.control !== null &&
@@ -114,7 +159,27 @@ export function Tablero({ datos }: { datos: DatosTablero }) {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <Encabezado proceso={datos.proceso.nombre} actualizadoEn={datos.actualizadoEn} />
+      <Encabezado
+        proceso={datos.proceso.nombre}
+        actualizadoEn={datos.actualizadoEn}
+        hayPnd={datos.pnd !== null}
+        ejesFiltrados={filtros.ejes.length}
+        onEjes={() => setEjesAbiertos(true)}
+      />
+
+      <AnimatePresence>
+        {ejesAbiertos && datos.pnd && (
+          <ModalEjes
+            pnd={datos.pnd}
+            conteosEje={conteosEje}
+            conteosLinea={conteosLinea}
+            nombreTerritorio={codigo ? nombre(codigo) : "Colombia"}
+            ejesFiltrados={filtros.ejes}
+            onFiltrar={alternarEje}
+            onCerrar={() => setEjesAbiertos(false)}
+          />
+        )}
+      </AnimatePresence>
 
       <main className="grid flex-1 items-start gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_25rem] xl:grid-cols-[minmax(0,1fr)_28rem]">
         <div className="flex min-w-0 flex-col gap-3">
@@ -124,11 +189,14 @@ export function Tablero({ datos }: { datos: DatosTablero }) {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.9, ease: suave }}
             className="relative h-[72vh] min-h-[28rem] overflow-hidden rounded-lg border border-subtle bg-[#040C1D] shadow-[var(--shadow-deep)] lg:h-[calc(100dvh-7.75rem)]"
-            aria-label="Mapa de Colombia"
+            aria-label="Mapa"
           >
             <MapaColombia
               valores={valores}
+              cifrasPaises={cifrasPaises}
               metrica={metrica}
+              ambito={ambito}
+              onAmbito={cambiarAmbito}
               departamento={departamento}
               seleccion={seleccion}
               modo3d={modo3d}
@@ -150,16 +218,24 @@ export function Tablero({ datos }: { datos: DatosTablero }) {
                   departamento={departamento}
                   nombreDepto={departamento ? nombre(departamento) : ""}
                   municipios={municipiosDelDepto}
-                  onSalir={salir}
+                  ambito={ambito}
+                  onSalir={() => (ambito === "internacional" ? cambiarAmbito("nacional") : salir())}
                 />
                 <SelectorMetrica
                   metrica={metrica}
                   onCambiar={setMetrica}
                   modo3d={modo3d}
                   onModo3d={() => setModo3d((v) => !v)}
+                  ambito={ambito}
+                  onAmbito={cambiarAmbito}
                 />
               </div>
-              <BarraFiltros filtros={filtros} onCambiar={setFiltros} conteoTemas={conteoTemas} />
+              <BarraFiltros
+                filtros={filtros}
+                onCambiar={setFiltros}
+                conteoTemas={conteoTemas}
+                pnd={datos.pnd}
+              />
             </div>
 
             {/* Pista de interacción y acceso a lo cualitativo */}
@@ -169,15 +245,33 @@ export function Tablero({ datos }: { datos: DatosTablero }) {
               transition={{ delay: 4.2, duration: 0.6 }}
               className="vidrio pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-4 rounded-full py-1.5 pr-1.5 pl-4 text-xs whitespace-nowrap text-secondary sm:bottom-6"
             >
-              <span className="hidden items-center gap-1.5 2xl:flex">
-                <MousePointerClick className="size-3.5 text-accent" /> Clic: seleccionar
-              </span>
-              <span className="hidden items-center gap-1.5 2xl:flex">
-                <MapPin className="size-3.5 text-accent" /> Doble clic: explorar municipios
-              </span>
-              <span className="hidden items-center gap-1.5 2xl:flex">
-                <Keyboard className="size-3.5 text-accent" /> Esc: vista nacional
-              </span>
+              {ambito === "internacional" ? (
+                <>
+                  <span className="hidden items-center gap-1.5 2xl:flex">
+                    <MousePointerClick className="size-3.5 text-accent" /> Pase el cursor: cifras del
+                    país
+                  </span>
+                  <span className="hidden items-center gap-1.5 2xl:flex">
+                    <MapPin className="size-3.5 text-accent" /> Doble clic en Colombia: detalle
+                    nacional
+                  </span>
+                  <span className="hidden items-center gap-1.5 2xl:flex">
+                    <Keyboard className="size-3.5 text-accent" /> Esc: volver a Colombia
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="hidden items-center gap-1.5 2xl:flex">
+                    <MousePointerClick className="size-3.5 text-accent" /> Clic: seleccionar
+                  </span>
+                  <span className="hidden items-center gap-1.5 2xl:flex">
+                    <MapPin className="size-3.5 text-accent" /> Doble clic: explorar municipios
+                  </span>
+                  <span className="hidden items-center gap-1.5 2xl:flex">
+                    <Keyboard className="size-3.5 text-accent" /> Esc: vista nacional
+                  </span>
+                </>
+              )}
               <button
                 onClick={() =>
                   document.getElementById("narrativas")?.scrollIntoView({ behavior: "smooth" })

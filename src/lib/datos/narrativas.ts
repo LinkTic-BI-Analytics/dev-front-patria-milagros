@@ -36,12 +36,15 @@ export type Generalidad = {
 };
 
 const SUFIJO_CORRECCION = /\s*\(corregido por quien lo contó\)\s*$/i;
+// Rótulos del formulario asistido: estorban al contar términos, su contenido no.
+const ROTULOS = /(^|\n)\s*(problema|lo que se espera|solución sugerida|solucion sugerida)\s*:\s*/gi;
 
 /** "Salud en Concepción: El puesto…" → "El puesto…". El tema y el lugar ya son columnas. */
 export function cuerpoDe(texto: string): string {
-  const limpio = texto.replace(SUFIJO_CORRECCION, "").trim();
+  const limpio = texto.replace(SUFIJO_CORRECCION, "").replace(ROTULOS, "$1").trim();
   const i = limpio.indexOf(": ");
-  return i > 0 && i < 90 ? limpio.slice(i + 2) : limpio;
+  // El prefijo "Tema en Municipio:" ya es columna; el resto del texto se conserva.
+  return i > 0 && i < 90 && !limpio.slice(0, i).includes("\n") ? limpio.slice(i + 2) : limpio;
 }
 
 export const normalizar = (s: string) =>

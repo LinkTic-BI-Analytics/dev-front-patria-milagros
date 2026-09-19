@@ -2,17 +2,22 @@
 
 import Image from "next/image";
 import { motion } from "motion/react";
-import { FlaskConical, LogOut, RefreshCw } from "lucide-react";
+import { LogOut, Orbit, RefreshCw } from "lucide-react";
 import { salir } from "@/app/acceso/acciones";
 
 export function Encabezado({
   proceso,
   actualizadoEn,
+  hayPnd,
+  ejesFiltrados,
+  onEjes,
 }: {
   proceso: string;
   actualizadoEn: string;
+  hayPnd: boolean;
+  ejesFiltrados: number;
+  onEjes: () => void;
 }) {
-  const esPrueba = /prueba/i.test(proceso);
   const hora = new Intl.DateTimeFormat("es-CO", {
     timeZone: "America/Bogota",
     hour: "2-digit",
@@ -41,20 +46,38 @@ export function Encabezado({
           <span />
           <span />
         </div>
-        <h1 className="titulo-display truncate text-sm font-black tracking-tight uppercase sm:text-lg">
-          Sistema de Planeación <span className="text-accent">Nacional</span>
+        <h1 className="titulo-display truncate text-sm font-black tracking-tight uppercase sm:text-[1.05rem]">
+          Sistema de <span className="text-accent">Escucha</span> y Planeación Nacional
         </h1>
       </div>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
-        {esPrueba && (
-          <span
-            title={proceso}
-            className="hidden items-center gap-1.5 rounded-full bg-warning-bg px-3 py-1 text-xs font-semibold text-warning md:inline-flex"
+        {hayPnd && (
+          <button
+            onClick={onEjes}
+            className="group relative inline-flex h-9 items-center gap-2 overflow-hidden rounded-sm border border-gold-600/60 bg-[rgba(255,200,0,.08)] px-3 text-xs font-bold tracking-[0.06em] text-accent uppercase transition-colors hover:bg-[rgba(255,200,0,.16)]"
           >
-            <FlaskConical className="size-3.5" /> Escenario de prueba
-          </span>
+            <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+            <Orbit className="relative size-4" />
+            <span className="relative hidden sm:inline">Ejes articuladores</span>
+            <span className="relative sm:hidden">Ejes</span>
+            {ejesFiltrados > 0 && (
+              <span className="cifra relative grid size-5 place-items-center rounded-full bg-action-primary text-[10px] text-action-primary-text">
+                {ejesFiltrados}
+              </span>
+            )}
+          </button>
         )}
+        <span
+          title={`Proceso: ${proceso}`}
+          className="hidden items-center gap-2 rounded-full bg-success-bg px-3 py-1 text-xs font-semibold text-success md:inline-flex"
+        >
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-70" />
+            <span className="relative inline-flex size-2 rounded-full bg-success" />
+          </span>
+          Datos en vivo
+        </span>
         <span className="hidden items-center gap-1.5 text-xs text-muted lg:inline-flex">
           <RefreshCw className="size-3.5" /> Corte {hora}
         </span>

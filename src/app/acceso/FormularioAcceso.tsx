@@ -74,10 +74,10 @@ export function FormularioAcceso() {
             Tablero territorial · Entrega 1
           </motion.p>
           <h1 className="titulo-display text-[clamp(2.4rem,1.2rem+4.4vw,5rem)] font-black uppercase">
-            {["Sistema de", "Planeación", "Nacional"].map((linea, i) => (
+            {["Sistema de Escucha", "y Planeación", "Nacional"].map((linea, i) => (
               <span key={linea} className="block overflow-hidden">
                 <motion.span
-                  className={`block ${i === 1 ? "text-accent" : ""}`}
+                  className={`block ${i === 0 ? "text-accent" : ""}`}
                   initial={{ y: "110%" }}
                   animate={{ y: 0 }}
                   transition={{ duration: 0.9, delay: 0.65 + i * 0.12, ease: suave }}

@@ -64,6 +64,7 @@ type FilaAporte = {
   canal: Canal;
   recibido_en: string;
   es_colectivo: boolean;
+  relato_original: string;
 };
 type FilaUbicacion = {
   aporte_id: string;
@@ -133,8 +134,12 @@ export async function obtenerTablero(): Promise<DatosTablero> {
         ["codigo", "version"],
         (q) => q.in("nivel", ["departamento", "municipio"]),
       ),
-      todas<FilaAporte>(sb, "aporte", "id,tema,canal,recibido_en,es_colectivo", ["id"], (q) =>
-        delProceso(q).is("retirado_en", null),
+      todas<FilaAporte>(
+        sb,
+        "aporte",
+        "id,tema,canal,recibido_en,es_colectivo,relato_original",
+        ["id"],
+        (q) => delProceso(q).is("retirado_en", null),
       ),
       todas<FilaUbicacion>(
         sb,
@@ -193,6 +198,22 @@ export async function obtenerTablero(): Promise<DatosTablero> {
     else municipios[t.codigo] = { ...base, tipo: t.tipo };
   }
 
+  // La síntesis vigente de cada aporte del universo: la última versión.
+  const delUniverso = new Set(aportes.map((a) => a.id));
+  const vigentes = new Map<string, FilaSintesis>();
+  for (const s of sintesis) {
+    if (!delUniverso.has(s.aporte_id)) continue;
+    const actual = vigentes.get(s.aporte_id);
+    if (!actual || s.version > actual.version) vigentes.set(s.aporte_id, s);
+  }
+
+  // Relación con el PND, una vez por aporte: la síntesis si la hay, si no el relato original.
+  // Se calcula aquí para que ni el vocabulario del catálogo ni los relatos salgan del servidor.
+  const alinear = catalogoPnd
+    ? crearAlineador(catalogoPnd.ejes.flatMap((e) => e.lineas.map((l) => ({ ...l, eje: e.id }))))
+    : null;
+  const alineaciones = new Map<string, ReturnType<NonNullable<typeof alinear>>>();
+
   // Ubicación por aporte: municipios confirmados; si no hay, el último estado.
   const ubicPorAporte = agruparPor(ubicaciones, (u) => u.aporte_id);
   const temasDesconocidos = new Set<string>();
@@ -212,9 +233,16 @@ export async function obtenerTablero(): Promise<DatosTablero> {
     const fecha = fechaBogota.format(new Date(a.recibido_en));
     const tema = resolverTema(a.tema);
     if (!temaReconocido(tema)) temasDesconocidos.add(String(tema));
+    const vigente = vigentes.get(a.id);
+    const alineacion = alinear
+      ? alinear(vigente ? cuerpoDe(vigente.texto) : a.relato_original, tema)
+      : null;
+    alineaciones.set(a.id, alineacion);
     return {
       id: a.id,
       tema,
+      eje: alineacion?.eje ?? null,
+      linea: alineacion?.linea ?? null,
       canal: a.canal,
       mes: fecha.slice(0, 7),
       fecha,
@@ -247,6 +275,7 @@ export async function obtenerTablero(): Promise<DatosTablero> {
       id,
       temas: [...new Set(suyos.map((a) => a.tema ?? "sin_tema"))],
       canales: [...new Set(suyos.map((a) => a.canal))],
+      ejes: [...new Set(suyos.map((a) => a.eje).filter((e): e is string => e !== null))],
       estado,
       municipios: [
         ...new Set(
@@ -273,32 +302,21 @@ export async function obtenerTablero(): Promise<DatosTablero> {
         id: al.id,
         tema: a.tema,
         canal: a.canal,
+        eje: a.eje,
         municipios: a.municipios,
         etapa,
         devuelta: al.devuelta_en !== null,
       };
     });
 
-  // Narrativas: la síntesis vigente (última versión) de cada aporte del universo.
-  const vigentes = new Map<string, FilaSintesis>();
-  for (const s of sintesis) {
-    if (!aportePorId.has(s.aporte_id)) continue;
-    const actual = vigentes.get(s.aporte_id);
-    if (!actual || s.version > actual.version) vigentes.set(s.aporte_id, s);
-  }
-  // Relación con el PND: se calcula aquí para que el vocabulario del catálogo no salga del servidor.
-  const alinear = catalogoPnd
-    ? crearAlineador(
-        catalogoPnd.ejes.flatMap((e) => e.lineas.map((l) => ({ ...l, eje: e.id }))),
-      )
-    : null;
+  // Narrativas: la síntesis vigente de cada aporte, con la alineación ya calculada.
   const narrativas: NarrativaResumen[] = [...vigentes.values()].map((s) => ({
     aporteId: s.aporte_id,
     texto: s.texto,
     version: s.version,
     clase: s.clase,
     confirmada: s.confirmada_en !== null,
-    pnd: alinear ? alinear(cuerpoDe(s.texto), aportePorId.get(s.aporte_id)?.tema ?? null) : null,
+    pnd: alineaciones.get(s.aporte_id) ?? null,
   }));
 
   return {
@@ -311,11 +329,13 @@ export async function obtenerTablero(): Promise<DatosTablero> {
     narrativas,
     pnd: catalogoPnd && {
       fuente: catalogoPnd.fuente,
-      ejes: catalogoPnd.ejes.map(({ id, numero, nombre, vision, lineas }) => ({
+      ejes: catalogoPnd.ejes.map(({ id, numero, nombre, vision, indicadores, area, lineas }) => ({
         id,
         numero,
         nombre,
         vision,
+        indicadores,
+        area,
         lineas: lineas.map((l) => ({ id: l.id, nombre: l.nombre })),
       })),
     },

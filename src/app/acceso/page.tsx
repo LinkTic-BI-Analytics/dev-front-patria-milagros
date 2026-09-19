@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { FormularioAcceso } from "./FormularioAcceso";
 
 export const metadata: Metadata = {
-  title: "Acceso · Sistema de Planeación Nacional",
+  title: "Acceso · Sistema de Escucha y Planeación Nacional",
 };
 
 export default function PaginaAcceso() {

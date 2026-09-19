@@ -20,9 +20,8 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sistema de Planeación Nacional",
-  description: "Panorama territorial de la participación ciudadana en Colombia.",
-  icons: { icon: "/linea-grafica-patria/assets/escudo-colombia.png" },
+  title: "Sistema de Escucha y Planeación Nacional",
+  description: "Escucha ciudadana y panorama territorial para la planeación nacional.",
 };
 
 export const viewport: Viewport = {

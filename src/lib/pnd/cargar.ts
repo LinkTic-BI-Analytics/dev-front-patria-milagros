@@ -8,7 +8,15 @@ import catalogo from "./catalogo.json";
 // El documento del que se derivó no se versiona: vive en `top_secret/` en el equipo local.
 
 export type PndLinea = { id: string; nombre: string; sectores: string[]; claves: string[] };
-export type PndEje = { id: string; numero: number; nombre: string; vision: string; lineas: PndLinea[] };
+export type PndEje = {
+  id: string;
+  numero: number;
+  nombre: string;
+  vision: string;
+  indicadores: number | null;
+  area: string;
+  lineas: PndLinea[];
+};
 export type PndCatalogo = { fuente: string; ejes: PndEje[] };
 
 const esTextos = (v: unknown): v is string[] =>
@@ -25,6 +33,8 @@ function esCatalogo(v: unknown): v is PndCatalogo {
         typeof e.numero === "number" &&
         typeof e.nombre === "string" &&
         typeof e.vision === "string" &&
+        (typeof e.indicadores === "number" || e.indicadores === null) &&
+        typeof e.area === "string" &&
         Array.isArray(e.lineas) &&
         e.lineas.every(
           (l) =>
