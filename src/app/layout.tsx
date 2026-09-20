@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Montserrat } from "next/font/google";
 import "./globals.css";
+import { Proveedores } from "@/components/Proveedores";
 
 const montserrat = Montserrat({
   variable: "--fuente-montserrat",
@@ -38,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full">
         <div className="fondo-vivo" aria-hidden />
         <div className="grano" aria-hidden />
-        {children}
+        <Proveedores>{children}</Proveedores>
       </body>
     </html>
   );

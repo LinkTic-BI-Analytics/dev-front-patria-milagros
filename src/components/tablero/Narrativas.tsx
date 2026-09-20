@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  memo,
+  useDeferredValue,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   BadgeCheck,
@@ -34,8 +41,10 @@ import {
 } from "@/lib/datos/narrativas";
 import type { DatosTablero } from "@/lib/datos/tipos";
 import { AlineacionPnd, SIN_RELACION } from "./AlineacionPnd";
+import { EstadoVacio } from "./EstadoVacio";
+import { EASE, RESORTE } from "@/lib/ui/movimiento";
 
-const suave = [0.22, 1, 0.36, 1] as const;
+const suave = EASE.salida;
 const POR_PAGINA = 8;
 
 const fechaCorta = new Intl.DateTimeFormat("es-CO", {
@@ -49,25 +58,38 @@ const formatoFecha = (f: string) => fechaCorta.format(new Date(`${f}T12:00:00Z`)
 type Vista = "agrupadas" | "todas";
 type Pestana = "panorama" | "plan" | "narrativas";
 
-export function Narrativas({
+// Memoizado: el tablero se re-renderiza al mover el cursor por el mapa y esto no depende de eso.
+export const Narrativas = memo(function Narrativas({
   datos,
   filtrados,
+  filtradosSinEje,
   filtros,
+  onFiltros,
+  onQuitarTerritorio,
   codigo,
   nombreTerritorio,
 }: {
   datos: DatosTablero;
   filtrados: Filtrados;
+  /** Lo mismo sin el filtro de eje: el bloque del Plan compara los seis, no solo el elegido. */
+  filtradosSinEje: Filtrados;
   filtros: Filtros;
+  onFiltros: Dispatch<SetStateAction<Filtros>>;
+  onQuitarTerritorio: () => void;
   codigo: string | null;
   nombreTerritorio: string;
 }) {
   const [vista, setVista] = useState<Vista>("agrupadas");
   const [busqueda, setBusqueda] = useState("");
-  const [ejePnd, setEjePnd] = useState<string | null>(null);
+  // El eje se filtra en el tablero entero (un solo filtro, no uno aquí y otro en el mapa). Lo único
+  // propio de esta tabla es «sin relación clara», que no existe como eje y excluye a los demás.
+  const [soloSinRelacion, setSoloSinRelacion] = useState(false);
+  const sinRelacion = soloSinRelacion && filtros.ejes.length === 0;
   const [pestana, setPestana] = useState<Pestana>("panorama");
   // La página vuelve a 1 cuando cambia lo que se está mirando.
-  const contexto = `${codigo}|${filtros.temas.join()}|${filtros.canales.join()}|${vista}|${busqueda}|${ejePnd}`;
+  const contexto = `${codigo}|${filtros.temas.join()}|${filtros.canales.join()}|${filtros.ejes.join()}|${vista}|${busqueda}|${sinRelacion}`;
+  // Lo mismo sin la búsqueda: teclear filtra, pero no vuelve a animar toda la tabla.
+  const claveTabla = `${codigo}|${filtros.temas.join()}|${filtros.canales.join()}|${filtros.ejes.join()}|${vista}|${sinRelacion}`;
   const [pagina, setPagina] = useState({ contexto, n: 0 });
   const n = pagina.contexto === contexto ? pagina.n : 0;
 
@@ -83,8 +105,14 @@ export function Narrativas({
     [filas, referencia, codigo],
   );
   const alineacion = useMemo(
-    () => (datos.pnd ? alineacionPnd(filas, datos.pnd) : null),
-    [datos.pnd, filas],
+    () =>
+      datos.pnd
+        ? alineacionPnd(
+            filtros.ejes.length ? narrativasDe(datos, filtradosSinEje, codigo) : filas,
+            datos.pnd,
+          )
+        : null,
+    [datos, filtradosSinEje, filtros.ejes.length, codigo, filas],
   );
   const lineaPorId = useMemo(
     () =>
@@ -95,29 +123,33 @@ export function Narrativas({
       ),
     [datos.pnd],
   );
-  const nombreEje = (id: string) => {
-    if (id === SIN_RELACION) return "Sin relación clara con el PND";
-    const eje = datos.pnd?.ejes.find((e) => e.id === id);
-    return eje ? `Eje ${eje.numero} · ${eje.nombre}` : id;
-  };
-
-  // El filtro por eje solo afecta la tabla; la generalidad mira todo el territorio.
   const filasTabla = useMemo(
-    () =>
-      ejePnd === null
-        ? filas
-        : filas.filter((f) => (ejePnd === SIN_RELACION ? !f.pnd : f.pnd?.eje === ejePnd)),
-    [filas, ejePnd],
+    () => (sinRelacion ? filas.filter((f) => !f.pnd) : filas),
+    [filas, sinRelacion],
   );
+  const alternarEje = (id: string) => {
+    if (id === SIN_RELACION) {
+      setSoloSinRelacion(!sinRelacion);
+      onFiltros((f) => (f.ejes.length ? { ...f, ejes: [] } : f));
+      return;
+    }
+    setSoloSinRelacion(false);
+    onFiltros((f) => ({
+      ...f,
+      ejes: f.ejes.includes(id) ? f.ejes.filter((e) => e !== id) : [...f.ejes, id],
+    }));
+  };
   const grupos = useMemo(() => agruparNarrativas(filasTabla, codigo), [filasTabla, codigo]);
 
   // Búsqueda sobre el relato, el tema y los lugares.
-  const q = normalizar(busqueda.trim());
+  // Diferida: teclear no bloquea el campo aunque haya cientos de relatos que filtrar.
+  const q = normalizar(useDeferredValue(busqueda).trim());
   const lugaresDe = (municipios: string[]) =>
     municipios.map((m) => `${nombreDe(m)} ${nombreDe(m.slice(0, 2))}`).join(" ");
   const coincide = (texto: string) => !q || normalizar(texto).includes(q);
 
-  const nombreLinea = (id: string | null | undefined) => (id ? lineaPorId.get(id)?.nombre ?? "" : "");
+  const nombreLinea = (id: string | null | undefined) =>
+    id ? (lineaPorId.get(id)?.nombre ?? "") : "";
   const listaGrupos = grupos.filter((g) =>
     coincide(
       `${g.cuerpo} ${g.temas.map((t) => temaDe(t).etiqueta).join(" ")} ${lugaresDe(g.municipios)} ${nombreLinea(g.pnd)}`,
@@ -141,7 +173,7 @@ export function Narrativas({
             id: "plan",
             etiqueta: "Plan Nacional",
             icono: Compass,
-            detalle: alineacion
+            detalle: alineacion?.total
               ? `${Math.round((alineacion.relacionadas * 100) / Math.max(alineacion.total, 1))}%`
               : null,
           }
@@ -152,16 +184,71 @@ export function Narrativas({
         icono: Rows3,
         detalle: formatoNumero(filas.length),
       },
-    ] as ({ id: Pestana; etiqueta: string; icono: typeof ChartPie; detalle: string | null } | null)[]
+    ] as ({
+      id: Pestana;
+      etiqueta: string;
+      icono: typeof ChartPie;
+      detalle: string | null;
+    } | null)[]
   ).filter((p) => p !== null);
 
-  const filtrosActivos = [
-    ...filtros.temas.map((t) => temaDe(t).etiqueta),
-    ...filtros.canales.map((c) => CANALES[c].etiqueta),
+  // Todo lo que recorta lo que se ve, cada cosa con su forma de quitarla.
+  const chips: { clave: string; etiqueta: string; quitar: () => void }[] = [
+    ...(codigo
+      ? [{ clave: "territorio", etiqueta: nombreTerritorio, quitar: onQuitarTerritorio }]
+      : []),
+    ...filtros.temas.map((t) => ({
+      clave: `tema-${t}`,
+      etiqueta: temaDe(t).corta,
+      quitar: () => onFiltros((f) => ({ ...f, temas: f.temas.filter((x) => x !== t) })),
+    })),
+    ...filtros.canales.map((c) => ({
+      clave: `canal-${c}`,
+      etiqueta: CANALES[c].etiqueta,
+      quitar: () => onFiltros((f) => ({ ...f, canales: f.canales.filter((x) => x !== c) })),
+    })),
     ...filtros.ejes.map((id) => {
       const eje = datos.pnd?.ejes.find((e) => e.id === id);
-      return eje ? `Eje ${eje.numero}` : id;
+      return {
+        clave: `eje-${id}`,
+        etiqueta: eje ? `Eje ${eje.numero} · ${eje.nombre}` : id,
+        quitar: () => onFiltros((f) => ({ ...f, ejes: f.ejes.filter((x) => x !== id) })),
+      };
     }),
+    ...(sinRelacion
+      ? [
+          {
+            clave: "sin-relacion",
+            etiqueta: "Sin relación clara con el Plan",
+            quitar: () => setSoloSinRelacion(false),
+          },
+        ]
+      : []),
+    ...(busqueda.trim()
+      ? [{ clave: "busqueda", etiqueta: `«${busqueda.trim()}»`, quitar: () => setBusqueda("") }]
+      : []),
+  ];
+  const limpiarTodo = () => {
+    onFiltros({ temas: [], canales: [], ejes: [] });
+    setSoloSinRelacion(false);
+    setBusqueda("");
+    onQuitarTerritorio();
+  };
+  const claveFiltros = chips.map((c) => c.clave).join();
+  const vacioAcciones = [
+    ...(chips.some((c) => c.clave !== "territorio")
+      ? [
+          {
+            etiqueta: "Quitar filtros",
+            onClick: () => {
+              onFiltros({ temas: [], canales: [], ejes: [] });
+              setSoloSinRelacion(false);
+              setBusqueda("");
+            },
+          },
+        ]
+      : []),
+    ...(codigo ? [{ etiqueta: "Ver toda Colombia", onClick: onQuitarTerritorio }] : []),
   ];
 
   return (
@@ -170,7 +257,7 @@ export function Narrativas({
       initial={{ opacity: 0, y: 24 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, delay: 0.4, ease: suave }}
-      className="panel relative scroll-mt-20 overflow-hidden p-4 sm:p-6"
+      className="panel relative scroll-mt-20 overflow-clip p-4 sm:p-6"
       aria-label="Narrativas ciudadanas"
     >
       <div className="pointer-events-none absolute -top-24 -left-24 size-72 rounded-full bg-[radial-gradient(circle,rgba(255,200,0,.10),transparent_65%)]" />
@@ -204,10 +291,26 @@ export function Narrativas({
           <Pastilla valor={resumen.confirmadas} etiqueta="confirmadas por quien las contó" />
         </div>
       </div>
-      {filtrosActivos.length > 0 && (
-        <p className="relative mt-3 text-xs text-muted">
-          Filtrado por: <span className="text-secondary">{filtrosActivos.join(" · ")}</span>
-        </p>
+      {chips.length > 0 && (
+        <div className="relative mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="mr-1 text-muted">Viendo:</span>
+          {chips.map((c) => (
+            <button
+              key={c.clave}
+              onClick={c.quitar}
+              aria-label={`Quitar ${c.etiqueta}`}
+              className="group flex max-w-[16rem] items-center gap-1 rounded-full border border-default bg-white/[.04] py-0.5 pr-1.5 pl-2.5 text-secondary transition-colors hover:border-gold-500 hover:text-primary"
+            >
+              <span className="truncate">{c.etiqueta}</span>
+              <X className="size-3 shrink-0 text-muted group-hover:text-accent" />
+            </button>
+          ))}
+          {chips.length > 1 && (
+            <button onClick={limpiarTodo} className="ml-1 text-link hover:underline">
+              Limpiar todo
+            </button>
+          )}
+        </div>
       )}
 
       {/* Pestañas: una lectura a la vez */}
@@ -233,7 +336,7 @@ export function Narrativas({
               <motion.span
                 layoutId="pestana-narrativas"
                 className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-gold-500"
-                transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                transition={RESORTE.pastilla}
               />
             )}
           </button>
@@ -250,176 +353,218 @@ export function Narrativas({
         >
           {pestana === "panorama" && (
             <>
-                  {/* Generalidad narrativa */}
-                  <AnimatePresence mode="wait" initial={false}>
-                    <motion.div
-                      key={`${codigo}|${filtrosActivos.join()}`}
-                      initial={{ opacity: 0, y: 12, filter: "blur(6px)" }}
-                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                      exit={{ opacity: 0, y: -8, filter: "blur(6px)" }}
-                      transition={{ duration: 0.45, ease: suave }}
-                      className="relative mt-5"
-                    >
-                      {resumen.total === 0 ? (
-                        <div className="rounded-md border border-subtle bg-white/[.02] py-10 text-center text-sm text-muted">
-                          No hay narrativas en {nombreTerritorio} con los filtros actuales.
-                        </div>
-                      ) : (
-                        <GeneralidadNarrativa
-                          resumen={resumen}
-                          nombreTerritorio={nombreTerritorio}
-                          nacional={codigo === null}
-                          ejePrincipal={
-                            alineacion?.ejes.reduce(
-                              (max, e) => (e.total > (max?.total ?? 0) ? e : max),
-                              null as (typeof alineacion.ejes)[number] | null,
-                            ) ?? null
-                          }
-                        />
-                      )}
-                    </motion.div>
-                  </AnimatePresence>
+              {/* Generalidad narrativa */}
+              {/* Con clave y sin salida encadenada: `mode="wait"` ya dejó textos colgados. */}
+              <motion.div
+                key={claveFiltros}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, ease: suave }}
+                className="relative mt-5"
+              >
+                {resumen.total === 0 ? (
+                  <EstadoVacio
+                    icono={MessageSquareQuote}
+                    titulo={`No hay narrativas en ${nombreTerritorio} con lo que está viendo`}
+                    detalle="Quite algún filtro o vuelva al país para leer lo que cuenta la gente."
+                    acciones={vacioAcciones}
+                  />
+                ) : (
+                  <GeneralidadNarrativa
+                    resumen={resumen}
+                    nombreTerritorio={nombreTerritorio}
+                    nacional={codigo === null}
+                    ejePrincipal={
+                      filtros.ejes.length
+                        ? null
+                        : (alineacion?.ejes.reduce(
+                            (max, e) => (e.total > (max?.total ?? 0) ? e : max),
+                            null as (typeof alineacion.ejes)[number] | null,
+                          ) ?? null)
+                    }
+                  />
+                )}
+              </motion.div>
             </>
           )}
 
           {pestana === "plan" && (
             <>
-                  {alineacion && alineacion.total > 0 && datos.pnd && (
-                    <AlineacionPnd
-                      alineacion={alineacion}
-                      fuente={datos.pnd.fuente}
-                      nombreTerritorio={nombreTerritorio}
-                      ejeActivo={ejePnd}
-                      onEje={(eje) => {
-                        setEjePnd(eje);
-                        // El filtro se siente en la tabla: se pasa a esa pestaña.
-                        if (eje) setPestana("narrativas");
-                      }}
-                    />
-                  )}
+              {alineacion && alineacion.total > 0 && datos.pnd ? (
+                <AlineacionPnd
+                  alineacion={alineacion}
+                  fuente={datos.pnd.fuente}
+                  nombreTerritorio={nombreTerritorio}
+                  activos={sinRelacion ? [SIN_RELACION] : filtros.ejes}
+                  onEje={alternarEje}
+                />
+              ) : (
+                <div className="mt-6">
+                  <EstadoVacio
+                    icono={Compass}
+                    titulo={`Aún no hay narrativas de ${nombreTerritorio} para cruzar con el Plan`}
+                    detalle="El cruce con los ejes del Plan se hace sobre los relatos sintetizados. Aquí todavía no hay ninguno con lo que está viendo."
+                    acciones={vacioAcciones}
+                  />
+                </div>
+              )}
             </>
           )}
 
           {pestana === "narrativas" && (
             <>
-                  {/* Tabla */}
-                  <div className="relative mt-6">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex rounded-md border border-subtle bg-white/[.03] p-1" role="tablist">
-                        {(
-                          [
-                            ["agrupadas", "Agrupadas", Layers],
-                            ["todas", "Todas", List],
-                          ] as const
-                        ).map(([v, etiqueta, Icono]) => (
-                          <button
-                            key={v}
-                            role="tab"
-                            aria-selected={vista === v}
-                            onClick={() => setVista(v)}
-                            className={`relative flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-bold transition-colors ${
-                              vista === v ? "text-action-primary-text" : "text-secondary hover:text-primary"
-                            }`}
-                          >
-                            {vista === v && (
-                              <motion.span
-                                layoutId="vista-narrativas"
-                                className="absolute inset-0 rounded-sm bg-action-primary"
-                                transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                              />
-                            )}
-                            <Icono className="relative size-3.5" />
-                            <span className="relative">{etiqueta}</span>
-                          </button>
-                        ))}
-                      </div>
-
-                      {ejePnd && (
-                        <button
-                          onClick={() => setEjePnd(null)}
-                          className="flex items-center gap-1.5 rounded-full border border-gold-500 bg-[rgba(255,200,0,.08)] px-3 py-1 text-xs text-primary transition-colors hover:bg-[rgba(255,200,0,.14)] sm:mr-auto"
-                        >
-                          {nombreEje(ejePnd)}
-                          <X className="size-3.5 text-accent" />
-                        </button>
-                      )}
-
-                      <label className="group relative w-full sm:w-72">
-                        <span className="sr-only">Buscar en las narrativas</span>
-                        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted group-focus-within:text-accent" />
-                        <input
-                          value={busqueda}
-                          onChange={(e) => setBusqueda(e.target.value)}
-                          placeholder={datos.pnd ? "Buscar relato, tema, lugar o línea" : "Buscar relato, tema o municipio"}
-                          className="h-9 w-full rounded-sm border border-default bg-surface-2/60 pr-8 pl-9 text-sm text-primary outline-none transition-all placeholder:text-muted focus:border-gold-500 focus:shadow-[0_0_0_3px_rgba(255,200,0,.2)]"
-                        />
-                        {busqueda && (
-                          <button
-                            onClick={() => setBusqueda("")}
-                            className="absolute top-1/2 right-2 -translate-y-1/2 text-muted hover:text-primary"
-                            aria-label="Limpiar búsqueda"
-                          >
-                            <X className="size-4" />
-                          </button>
+              {/* Tabla */}
+              <div className="relative mt-6">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div
+                    className="flex rounded-md border border-subtle bg-white/[.03] p-1"
+                    role="tablist"
+                  >
+                    {(
+                      [
+                        ["agrupadas", "Agrupadas", Layers],
+                        ["todas", "Todas", List],
+                      ] as const
+                    ).map(([v, etiqueta, Icono]) => (
+                      <button
+                        key={v}
+                        role="tab"
+                        aria-selected={vista === v}
+                        onClick={() => setVista(v)}
+                        className={`relative flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-bold transition-colors ${
+                          vista === v
+                            ? "text-action-primary-text"
+                            : "text-secondary hover:text-primary"
+                        }`}
+                      >
+                        {vista === v && (
+                          <motion.span
+                            layoutId="vista-narrativas"
+                            className="absolute inset-0 rounded-sm bg-action-primary"
+                            transition={RESORTE.pastilla}
+                          />
                         )}
-                      </label>
-                    </div>
+                        <Icono className="relative size-3.5" />
+                        <span className="relative">{etiqueta}</span>
+                      </button>
+                    ))}
+                  </div>
 
-                    <div className="scroll-fino overflow-x-auto rounded-md border border-subtle">
-                      {vista === "agrupadas" ? (
-                        <TablaAgrupada
-                          grupos={listaGrupos.slice(desde, desde + POR_PAGINA)}
-                          maximo={listaGrupos[0]?.veces ?? 1}
-                          nombreDe={nombreDe}
-                          lineaDe={datos.pnd ? (id) => lineaPorId.get(id ?? "") ?? null : null}
-                          claveAnimacion={`${contexto}|${actual}`}
-                        />
-                      ) : (
-                        <TablaTodas
-                          filas={listaTodas.slice(desde, desde + POR_PAGINA)}
-                          nombreDe={nombreDe}
-                          lineaDe={datos.pnd ? (id) => lineaPorId.get(id ?? "") ?? null : null}
-                          claveAnimacion={`${contexto}|${actual}`}
-                        />
-                      )}
-                      {total === 0 && (
-                        <p className="py-10 text-center text-sm text-muted">
-                          {busqueda ? `Nada coincide con «${busqueda}».` : "Sin narrativas para mostrar."}
+                  <label className="group relative w-full sm:w-72">
+                    <span className="sr-only">Buscar en las narrativas</span>
+                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted group-focus-within:text-accent" />
+                    <input
+                      value={busqueda}
+                      onChange={(e) => setBusqueda(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Escape") return;
+                        // Esc es del campo: limpia o suelta el foco, sin sacar del territorio.
+                        e.stopPropagation();
+                        if (busqueda) setBusqueda("");
+                        else e.currentTarget.blur();
+                      }}
+                      placeholder={
+                        datos.pnd
+                          ? "Buscar relato, tema, lugar o línea"
+                          : "Buscar relato, tema o municipio"
+                      }
+                      className="h-9 w-full rounded-sm border border-default bg-surface-2/60 pr-8 pl-9 text-sm text-primary outline-none transition-all placeholder:text-muted focus:border-gold-500 focus:shadow-[0_0_0_3px_rgba(255,200,0,.2)]"
+                    />
+                    {busqueda && (
+                      <button
+                        onClick={() => setBusqueda("")}
+                        className="absolute top-1/2 right-2 -translate-y-1/2 text-muted hover:text-primary"
+                        aria-label="Limpiar búsqueda"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    )}
+                  </label>
+                </div>
+
+                <div className="@container overflow-hidden rounded-md border border-subtle">
+                  {vista === "agrupadas" ? (
+                    <TablaAgrupada
+                      grupos={listaGrupos.slice(desde, desde + POR_PAGINA)}
+                      maximo={listaGrupos[0]?.veces ?? 1}
+                      nombreDe={nombreDe}
+                      lineaDe={datos.pnd ? (id) => lineaPorId.get(id ?? "") ?? null : null}
+                      claveAnimacion={`${claveTabla}|${actual}`}
+                    />
+                  ) : (
+                    <TablaTodas
+                      filas={listaTodas.slice(desde, desde + POR_PAGINA)}
+                      nombreDe={nombreDe}
+                      lineaDe={datos.pnd ? (id) => lineaPorId.get(id ?? "") ?? null : null}
+                      claveAnimacion={`${claveTabla}|${actual}`}
+                    />
+                  )}
+                  {total === 0 && (
+                    <EstadoVacio
+                      titulo={
+                        busqueda ? `Nada coincide con «${busqueda}»` : "Sin narrativas para mostrar"
+                      }
+                      detalle={
+                        busqueda
+                          ? "La búsqueda mira el relato, el tema, el lugar y la línea del Plan."
+                          : "Ningún relato pasa los filtros de arriba."
+                      }
+                      acciones={
+                        busqueda
+                          ? [{ etiqueta: "Limpiar búsqueda", onClick: () => setBusqueda("") }]
+                          : vacioAcciones
+                      }
+                    >
+                      {busqueda && resumen.terminos.length > 0 && (
+                        <p className="flex flex-wrap items-center justify-center gap-1.5 text-xs text-muted">
+                          Pruebe con:
+                          {resumen.terminos.slice(0, 5).map((t) => (
+                            <button
+                              key={t.termino}
+                              onClick={() => setBusqueda(t.termino)}
+                              className="rounded-full bg-white/8 px-2 py-0.5 text-secondary hover:text-accent"
+                            >
+                              {t.termino}
+                            </button>
+                          ))}
                         </p>
                       )}
-                    </div>
+                    </EstadoVacio>
+                  )}
+                </div>
 
-                    {total > 0 && (
-                      <div className="mt-3 flex items-center justify-between text-xs text-muted">
-                        <span>
-                          <span className="cifra text-secondary">
-                            {formatoNumero(desde + 1)}–{formatoNumero(Math.min(desde + POR_PAGINA, total))}
-                          </span>{" "}
-                          de <span className="cifra text-secondary">{formatoNumero(total)}</span>{" "}
-                          {vista === "agrupadas" ? "relatos" : "narrativas"}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <BotonPagina
-                            onClick={() => setPagina({ contexto, n: actual - 1 })}
-                            disabled={actual === 0}
-                            etiqueta="Página anterior"
-                          >
-                            <ChevronLeft className="size-4" />
-                          </BotonPagina>
-                          <span className="cifra px-2 text-secondary">
-                            {actual + 1} / {paginas}
-                          </span>
-                          <BotonPagina
-                            onClick={() => setPagina({ contexto, n: actual + 1 })}
-                            disabled={actual >= paginas - 1}
-                            etiqueta="Página siguiente"
-                          >
-                            <ChevronRight className="size-4" />
-                          </BotonPagina>
-                        </div>
-                      </div>
-                    )}
+                {total > 0 && (
+                  <div className="mt-3 flex items-center justify-between text-xs text-muted">
+                    <span>
+                      <span className="cifra text-secondary">
+                        {formatoNumero(desde + 1)}–
+                        {formatoNumero(Math.min(desde + POR_PAGINA, total))}
+                      </span>{" "}
+                      de <span className="cifra text-secondary">{formatoNumero(total)}</span>{" "}
+                      {vista === "agrupadas" ? "relatos" : "narrativas"}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <BotonPagina
+                        onClick={() => setPagina({ contexto, n: actual - 1 })}
+                        disabled={actual === 0}
+                        etiqueta="Página anterior"
+                      >
+                        <ChevronLeft className="size-4" />
+                      </BotonPagina>
+                      <span className="cifra px-2 text-secondary">
+                        {actual + 1} / {paginas}
+                      </span>
+                      <BotonPagina
+                        onClick={() => setPagina({ contexto, n: actual + 1 })}
+                        disabled={actual >= paginas - 1}
+                        etiqueta="Página siguiente"
+                      >
+                        <ChevronRight className="size-4" />
+                      </BotonPagina>
+                    </div>
                   </div>
+                )}
+              </div>
             </>
           )}
         </motion.div>
@@ -433,7 +578,7 @@ export function Narrativas({
       </p>
     </motion.section>
   );
-}
+});
 
 function Pastilla({ valor, etiqueta }: { valor: number; etiqueta: string }) {
   return (
@@ -524,7 +669,10 @@ function GeneralidadNarrativa({
           {resumen.temas.map(({ tema, total, porcentaje }, i) => {
             const { etiqueta, corta, icono: Icono } = temaDe(tema);
             return (
-              <div key={tema} className="grid grid-cols-[9rem_1fr_3.5rem] items-center gap-3 text-xs">
+              <div
+                key={tema}
+                className="grid grid-cols-[9rem_1fr_3.5rem] items-center gap-3 text-xs"
+              >
                 <span className="flex min-w-0 items-center gap-1.5 text-secondary" title={etiqueta}>
                   <Icono className="size-3.5 shrink-0 text-accent" />
                   <span className="truncate">{corta}</span>
@@ -593,7 +741,9 @@ function GeneralidadNarrativa({
         {resumen.terminos.length > 0 && (
           <div className="rounded-md border border-subtle bg-white/[.02] p-4">
             <p className="etiqueta mb-3">
-              {nacional ? "Términos más frecuentes" : `Términos que distinguen a ${nombreTerritorio}`}
+              {nacional
+                ? "Términos más frecuentes"
+                : `Términos que distinguen a ${nombreTerritorio}`}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {resumen.terminos.map((t, i) => (
@@ -623,7 +773,7 @@ function GeneralidadNarrativa({
   );
 }
 
-const cabecera = "etiqueta sticky top-0 bg-surface-1 px-3 py-2.5 text-left text-[11px] font-bold";
+const cabecera = "etiqueta bg-surface-1 px-3 py-2.5 text-left text-[11px] font-bold";
 const celda = "px-3 py-3 align-top";
 
 function ChipTema({ tema }: { tema: string | null }) {
@@ -641,7 +791,13 @@ function ChipTema({ tema }: { tema: string | null }) {
   );
 }
 
-function Lugares({ municipios, nombreDe }: { municipios: string[]; nombreDe: (c: string) => string }) {
+function Lugares({
+  municipios,
+  nombreDe,
+}: {
+  municipios: string[];
+  nombreDe: (c: string) => string;
+}) {
   if (!municipios.length)
     return <span className="text-xs text-muted italic">Sin ubicación confirmada</span>;
   const [primero, ...resto] = municipios;
@@ -652,10 +808,50 @@ function Lugares({ municipios, nombreDe }: { municipios: string[]; nombreDe: (c:
         <span className="text-primary">{nombreDe(primero)}</span>
         <span className="block text-xs text-muted">
           {nombreDe(primero.slice(0, 2))}
-          {resto.length > 0 && ` · +${resto.length} ${resto.length === 1 ? "municipio" : "municipios"}`}
+          {resto.length > 0 &&
+            ` · +${resto.length} ${resto.length === 1 ? "municipio" : "municipios"}`}
         </span>
       </span>
     </span>
+  );
+}
+
+type BuscarLinea = (id: string | null) => { nombre: string; eje: number } | null;
+
+/** Tema y línea del Plan bajo el relato: como columnas propias la tabla no cabía en un portátil. */
+function MetaRelato({
+  temas,
+  linea,
+  conPlan,
+  claves,
+}: {
+  temas: (string | null)[];
+  linea: { nombre: string; eje: number } | null;
+  conPlan: boolean;
+  claves?: string[];
+}) {
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      {temas.map((t) => (
+        <ChipTema key={t ?? "sin"} tema={t} />
+      ))}
+      {conPlan &&
+        (linea ? (
+          <span
+            className="flex min-w-0 items-center gap-1.5 text-xs text-muted"
+            title={
+              claves?.length ? `${linea.nombre} · coincide por: ${claves.join(", ")}` : linea.nombre
+            }
+          >
+            <span className="cifra shrink-0 rounded-xs bg-[rgba(78,139,224,.14)] px-1.5 text-[10px] text-info">
+              Eje {linea.eje}
+            </span>
+            <span className="max-w-[18rem] truncate">{linea.nombre}</span>
+          </span>
+        ) : (
+          <span className="text-xs text-muted italic">Sin relación clara con el Plan</span>
+        ))}
+    </div>
   );
 }
 
@@ -672,6 +868,37 @@ function FilaAnimada({ i, children }: { i: number; children: React.ReactNode }) 
   );
 }
 
+function TarjetaAnimada({ i, children }: { i: number; children: React.ReactNode }) {
+  return (
+    <motion.li
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: i * 0.03, duration: 0.35, ease: suave }}
+      className="border-t border-subtle p-3 first:border-t-0"
+    >
+      {children}
+    </motion.li>
+  );
+}
+
+function Veces({ veces, maximo, i }: { veces: number; maximo: number; i: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/8">
+        <motion.span
+          className="block h-full rounded-full bg-gold-500"
+          initial={{ width: 0 }}
+          animate={{ width: `${(veces * 100) / maximo}%` }}
+          transition={{ duration: 0.7, delay: i * 0.03, ease: suave }}
+        />
+      </span>
+      <span className="cifra w-7 text-right text-sm font-bold text-primary">
+        {formatoNumero(veces)}
+      </span>
+    </div>
+  );
+}
+
 function TablaAgrupada({
   grupos,
   maximo,
@@ -685,88 +912,113 @@ function TablaAgrupada({
   lineaDe: BuscarLinea | null;
   claveAnimacion: string;
 }) {
+  // Un relato abierto a la vez: deja ver todos los lugares donde se cuenta.
+  const [abierto, setAbierto] = useState<string | null>(null);
   if (!grupos.length) return null;
-  return (
-    <table className={`w-full border-collapse ${lineaDe ? "min-w-[58rem]" : "min-w-[46rem]"}`}>
-      <thead>
-        <tr>
-          <th className={cabecera}>Relato</th>
-          <th className={cabecera}>Tema</th>
-          {lineaDe && <th className={cabecera}>Línea del PND</th>}
-          <th className={cabecera}>Dónde se cuenta</th>
-          <th className={`${cabecera} w-40`}>Veces</th>
-          <th className={`${cabecera} text-right`}>Último</th>
-        </tr>
-      </thead>
-      <tbody key={claveAnimacion}>
-        {grupos.map((g, i) => (
-          <FilaAnimada key={g.clave} i={i}>
-            <td className={`${celda} max-w-[22rem]`}>
-              <p className="text-sm leading-snug text-primary">{g.cuerpo}</p>
-              {g.confirmadas > 0 && (
-                <p className="mt-1 flex items-center gap-1 text-[11px] text-info">
-                  <BadgeCheck className="size-3" /> {formatoNumero(g.confirmadas)}{" "}
-                  {g.confirmadas === 1 ? "confirmada" : "confirmadas"}
-                </p>
-              )}
-            </td>
-            <td className={celda}>
-              <div className="flex flex-col items-start gap-1">
-                {g.temas.slice(0, 2).map((t) => (
-                  <ChipTema key={t} tema={t === "sin_tema" ? null : t} />
-                ))}
-              </div>
-            </td>
-            {lineaDe && (
-              <td className={celda}>
-                <CeldaLinea linea={lineaDe(g.pnd)} />
-              </td>
-            )}
-            <td className={celda}>
-              <Lugares municipios={g.municipios} nombreDe={nombreDe} />
-            </td>
-            <td className={celda}>
-              <div className="flex items-center gap-2">
-                <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/8">
-                  <motion.span
-                    className="block h-full rounded-full bg-gold-500"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(g.veces * 100) / maximo}%` }}
-                    transition={{ duration: 0.7, delay: i * 0.03, ease: suave }}
-                  />
-                </span>
-                <span className="cifra w-7 text-right text-sm font-bold text-primary">
-                  {formatoNumero(g.veces)}
-                </span>
-              </div>
-            </td>
-            <td className={`${celda} cifra text-right text-xs whitespace-nowrap text-secondary`}>
-              {formatoFecha(g.ultima)}
-            </td>
-          </FilaAnimada>
-        ))}
-      </tbody>
-    </table>
+  const relato = (g: GrupoNarrativo) => (
+    <>
+      <p className="text-sm leading-snug text-primary">{g.cuerpo}</p>
+      <MetaRelato
+        temas={g.temas.slice(0, 2).map((t) => (t === "sin_tema" ? null : t))}
+        linea={lineaDe?.(g.pnd) ?? null}
+        conPlan={lineaDe !== null}
+      />
+      {g.confirmadas > 0 && (
+        <p className="mt-1.5 flex items-center gap-1 text-[11px] text-info">
+          <BadgeCheck className="size-3" /> {formatoNumero(g.confirmadas)}{" "}
+          {g.confirmadas === 1 ? "confirmada" : "confirmadas"}
+        </p>
+      )}
+      {g.municipios.length > 1 && (
+        <>
+          <button
+            onClick={() => setAbierto(abierto === g.clave ? null : g.clave)}
+            aria-expanded={abierto === g.clave}
+            className="mt-1.5 flex items-center gap-1 text-[11px] text-link hover:underline"
+          >
+            <ChevronRight
+              className={`size-3 transition-transform ${abierto === g.clave ? "rotate-90" : ""}`}
+            />
+            {abierto === g.clave ? "Ocultar lugares" : `Ver los ${g.municipios.length} municipios`}
+          </button>
+          {abierto === g.clave && (
+            <motion.ul
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="mt-2 flex flex-wrap gap-1.5"
+            >
+              {g.municipios.map((m) => (
+                <li
+                  key={m}
+                  className="rounded-xs border border-subtle bg-white/[.03] px-2 py-0.5 text-xs text-secondary"
+                >
+                  {nombreDe(m)}
+                  <span className="ml-1 text-muted">{nombreDe(m.slice(0, 2))}</span>
+                </li>
+              ))}
+            </motion.ul>
+          )}
+        </>
+      )}
+    </>
   );
-}
-
-type BuscarLinea = (id: string | null) => { nombre: string; eje: number } | null;
-
-function CeldaLinea({
-  linea,
-  claves,
-}: {
-  linea: { nombre: string; eje: number } | null;
-  claves?: string[];
-}) {
-  if (!linea) return <span className="text-xs text-muted italic">Sin relación clara</span>;
   return (
-    <span className="block max-w-[15rem]" title={claves?.length ? `Coincide por: ${claves.join(", ")}` : undefined}>
-      <span className="block text-xs leading-snug text-primary">{linea.nombre}</span>
-      <span className="cifra mt-0.5 inline-block rounded-xs bg-[rgba(78,139,224,.14)] px-1.5 text-[10px] text-info">
-        Eje {linea.eje}
-      </span>
-    </span>
+    <>
+      <table className="hidden w-full border-collapse @[44rem]:table">
+        <caption className="sr-only">
+          Relatos agrupados por lo que cuentan, del más al menos repetido
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" className={cabecera}>
+              Relato
+            </th>
+            <th scope="col" className={`${cabecera} w-48`}>
+              Dónde se cuenta
+            </th>
+            <th scope="col" className={`${cabecera} w-36`}>
+              Veces
+            </th>
+            <th scope="col" className={`${cabecera} w-28 text-right`}>
+              Último
+            </th>
+          </tr>
+        </thead>
+        <tbody key={claveAnimacion}>
+          {grupos.map((g, i) => (
+            <FilaAnimada key={g.clave} i={i}>
+              <td className={celda}>{relato(g)}</td>
+              <td className={celda}>
+                <Lugares municipios={g.municipios} nombreDe={nombreDe} />
+              </td>
+              <td className={celda}>
+                <Veces veces={g.veces} maximo={maximo} i={i} />
+              </td>
+              <td className={`${celda} cifra text-right text-xs whitespace-nowrap text-secondary`}>
+                {formatoFecha(g.ultima)}
+              </td>
+            </FilaAnimada>
+          ))}
+        </tbody>
+      </table>
+      <ul key={`t-${claveAnimacion}`} className="@[44rem]:hidden">
+        {grupos.map((g, i) => (
+          <TarjetaAnimada key={g.clave} i={i}>
+            {relato(g)}
+            <div className="mt-3 grid grid-cols-[minmax(0,1fr)_7rem] items-end gap-3">
+              <Lugares municipios={g.municipios} nombreDe={nombreDe} />
+              <div>
+                <Veces veces={g.veces} maximo={maximo} i={i} />
+                <p className="cifra mt-1 text-right text-[11px] text-muted">
+                  {formatoFecha(g.ultima)}
+                </p>
+              </div>
+            </div>
+          </TarjetaAnimada>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -774,6 +1026,27 @@ const CLASES = {
   mal_interpretado: "Corregida: se había interpretado mal",
   cambio_de_posicion: "Corregida: cambio de posición",
 } as const;
+
+function CanalYEstado({ fila }: { fila: FilaNarrativa }) {
+  const canal = CANALES[fila.aporte.canal];
+  return (
+    <span className="flex flex-col items-start gap-1.5">
+      <span className="inline-flex items-center gap-1.5 text-xs text-secondary">
+        <span className="size-2 rounded-full" style={{ background: canal.color }} />
+        {canal.etiqueta}
+      </span>
+      {fila.confirmada ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-info-bg px-2 py-0.5 text-[11px] whitespace-nowrap text-info">
+          <BadgeCheck className="size-3" /> Confirmada
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 rounded-full border border-subtle px-2 py-0.5 text-[11px] whitespace-nowrap text-muted">
+          Sin confirmar
+        </span>
+      )}
+    </span>
+  );
+}
 
 function TablaTodas({
   filas,
@@ -787,68 +1060,76 @@ function TablaTodas({
   claveAnimacion: string;
 }) {
   if (!filas.length) return null;
+  const relato = (f: FilaNarrativa) => (
+    <>
+      <p className="text-sm leading-snug text-primary">{f.cuerpo}</p>
+      <MetaRelato
+        temas={[f.aporte.tema]}
+        linea={lineaDe?.(f.pnd?.linea ?? null) ?? null}
+        conPlan={lineaDe !== null}
+        claves={f.pnd?.claves}
+      />
+      {f.version > 1 && f.clase !== "propuesta" && (
+        <p className="mt-1.5 flex items-center gap-1 text-[11px] text-accent">
+          <PenLine className="size-3" /> {CLASES[f.clase]} · v{f.version}
+        </p>
+      )}
+    </>
+  );
   return (
-    <table className={`w-full border-collapse ${lineaDe ? "min-w-[64rem]" : "min-w-[52rem]"}`}>
-      <thead>
-        <tr>
-          <th className={cabecera}>Narrativa</th>
-          <th className={cabecera}>Tema</th>
-          {lineaDe && <th className={cabecera}>Línea del PND</th>}
-          <th className={cabecera}>Territorio</th>
-          <th className={cabecera}>Canal</th>
-          <th className={cabecera}>Fecha</th>
-          <th className={cabecera}>Estado</th>
-        </tr>
-      </thead>
-      <tbody key={claveAnimacion}>
-        {filas.map((f, i) => {
-          const canal = CANALES[f.aporte.canal];
-          return (
+    <>
+      <table className="hidden w-full border-collapse @[44rem]:table">
+        <caption className="sr-only">
+          Todas las narrativas, de la más reciente a la más antigua
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" className={cabecera}>
+              Narrativa
+            </th>
+            <th scope="col" className={`${cabecera} w-48`}>
+              Territorio
+            </th>
+            <th scope="col" className={`${cabecera} w-32`}>
+              Canal y estado
+            </th>
+            <th scope="col" className={`${cabecera} w-28 text-right`}>
+              Fecha
+            </th>
+          </tr>
+        </thead>
+        <tbody key={claveAnimacion}>
+          {filas.map((f, i) => (
             <FilaAnimada key={f.aporteId} i={i}>
-              <td className={`${celda} max-w-[22rem]`}>
-                <p className="text-sm leading-snug text-primary">{f.cuerpo}</p>
-                {f.version > 1 && f.clase !== "propuesta" && (
-                  <p className="mt-1 flex items-center gap-1 text-[11px] text-accent">
-                    <PenLine className="size-3" /> {CLASES[f.clase]} · v{f.version}
-                  </p>
-                )}
-              </td>
-              <td className={celda}>
-                <ChipTema tema={f.aporte.tema} />
-              </td>
-              {lineaDe && (
-                <td className={celda}>
-                  <CeldaLinea linea={lineaDe(f.pnd?.linea ?? null)} claves={f.pnd?.claves} />
-                </td>
-              )}
+              <td className={celda}>{relato(f)}</td>
               <td className={celda}>
                 <Lugares municipios={f.aporte.municipios} nombreDe={nombreDe} />
               </td>
               <td className={celda}>
-                <span className="inline-flex items-center gap-1.5 text-xs text-secondary">
-                  <span className="size-2 rounded-full" style={{ background: canal.color }} />
-                  {canal.etiqueta}
-                </span>
+                <CanalYEstado fila={f} />
               </td>
-              <td className={`${celda} cifra text-xs whitespace-nowrap text-secondary`}>
+              <td className={`${celda} cifra text-right text-xs whitespace-nowrap text-secondary`}>
                 {formatoFecha(f.aporte.fecha)}
               </td>
-              <td className={celda}>
-                {f.confirmada ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-info-bg px-2 py-0.5 text-[11px] whitespace-nowrap text-info">
-                    <BadgeCheck className="size-3" /> Confirmada
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-subtle px-2 py-0.5 text-[11px] whitespace-nowrap text-muted">
-                    Sin confirmar
-                  </span>
-                )}
-              </td>
             </FilaAnimada>
-          );
-        })}
-      </tbody>
-    </table>
+          ))}
+        </tbody>
+      </table>
+      <ul key={`t-${claveAnimacion}`} className="@[44rem]:hidden">
+        {filas.map((f, i) => (
+          <TarjetaAnimada key={f.aporteId} i={i}>
+            {relato(f)}
+            <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+              <Lugares municipios={f.aporte.municipios} nombreDe={nombreDe} />
+              <div className="flex flex-col items-end gap-1">
+                <CanalYEstado fila={f} />
+                <p className="cifra text-[11px] text-muted">{formatoFecha(f.aporte.fecha)}</p>
+              </div>
+            </div>
+          </TarjetaAnimada>
+        ))}
+      </ul>
+    </>
   );
 }
 

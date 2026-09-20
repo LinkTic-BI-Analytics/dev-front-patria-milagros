@@ -14,7 +14,7 @@ export default function Cargando() {
               width={72}
               height={77}
               className="animate-pulse"
-              priority
+              preload
             />
             <div className="tricolor">
               <span />

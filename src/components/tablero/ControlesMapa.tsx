@@ -14,8 +14,10 @@ import {
 import type { Filtros } from "@/lib/datos/agregar";
 import type { Ambito } from "@/components/mapa/MapaColombia";
 import type { Canal, PndResumen } from "@/lib/datos/tipos";
+import { EASE, RESORTE } from "@/lib/ui/movimiento";
+import { useEscape } from "@/lib/ui/useEscape";
 
-const suave = [0.22, 1, 0.36, 1] as const;
+const suave = EASE.salida;
 
 export function MigaTerritorio({
   departamento,
@@ -71,8 +73,8 @@ export function MigaTerritorio({
         </p>
         <motion.p
           key={internacional ? "mundo" : (departamento ?? "nacional")}
-          initial={{ opacity: 0, y: 8, filter: "blur(4px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, ease: suave }}
           className="titulo-display truncate text-lg font-extrabold sm:text-xl"
         >
@@ -128,7 +130,7 @@ export function SelectorMetrica({
               <motion.span
                 layoutId="ambito-activo"
                 className="absolute inset-0 rounded-sm bg-action-primary shadow-glow-gold"
-                transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                transition={RESORTE.pastilla}
               />
             )}
             <Icono className="relative size-3.5" />
@@ -152,7 +154,7 @@ export function SelectorMetrica({
               <motion.span
                 layoutId="metrica-activa"
                 className="absolute inset-0 rounded-sm bg-action-primary shadow-glow-gold"
-                transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                transition={RESORTE.pastilla}
               />
             )}
             <span className="relative">{METRICAS[m].etiqueta}</span>
@@ -186,6 +188,13 @@ export function BarraFiltros({
 }) {
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
+  const botonTemas = useRef<HTMLButtonElement>(null);
+
+  // Esc cierra el popover (y nada más) y devuelve el foco a su botón.
+  useEscape(() => {
+    setAbierto(false);
+    botonTemas.current?.focus();
+  }, abierto);
 
   useEffect(() => {
     if (!abierto) return;
@@ -210,6 +219,7 @@ export function BarraFiltros({
     <div className="pointer-events-auto flex flex-wrap items-center gap-2">
       <div ref={caja} className="relative">
         <button
+          ref={botonTemas}
           onClick={() => setAbierto((v) => !v)}
           aria-expanded={abierto}
           className={`vidrio flex h-9 items-center gap-2 rounded-md px-3 text-xs font-bold shadow-[var(--shadow-card)] transition-colors ${

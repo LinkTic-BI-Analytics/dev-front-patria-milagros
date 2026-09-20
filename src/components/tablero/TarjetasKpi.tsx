@@ -3,17 +3,18 @@
 import { motion } from "motion/react";
 import { MapPinned, MessagesSquare, Radar, Siren, Target } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { CANALES, formatoNumero } from "@/lib/datos/catalogos";
+import { CANALES, formatoNumero, type Metrica } from "@/lib/datos/catalogos";
 import type { Resumen } from "@/lib/datos/agregar";
 import type { Canal } from "@/lib/datos/tipos";
 import { CifraAnimada } from "./CifraAnimada";
+import { EASE, RESORTE } from "@/lib/ui/movimiento";
 
 const entrada = {
   oculto: { opacity: 0, y: 14 },
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: 0.08 * i, duration: 0.6, ease: [0.22, 1, 0.36, 1] as const },
+    transition: { delay: 0.08 * i, duration: 0.6, ease: EASE.salida },
   }),
 };
 
@@ -24,6 +25,8 @@ function Tarjeta({
   children,
   pie,
   className = "",
+  activa = false,
+  onActivar,
 }: {
   i: number;
   icono: LucideIcon;
@@ -31,6 +34,10 @@ function Tarjeta({
   children: React.ReactNode;
   pie?: React.ReactNode;
   className?: string;
+  /** Esta cifra es la que pinta el mapa ahora. */
+  activa?: boolean;
+  /** Solo las tarjetas que llevan su cifra al mapa reaccionan al cursor: el resto no promete nada. */
+  onActivar?: () => void;
 }) {
   return (
     <motion.div
@@ -38,21 +45,57 @@ function Tarjeta({
       variants={entrada}
       initial="oculto"
       animate="visible"
-      whileHover={{ y: -2 }}
-      className={`panel group relative overflow-hidden p-4 transition-colors hover:border-default ${className}`}
+      whileHover={onActivar ? { y: -2 } : undefined}
+      className={`panel group relative overflow-hidden p-4 transition-colors ${
+        activa ? "border-gold-600/70" : onActivar ? "hover:border-default" : ""
+      } ${className}`}
     >
-      <div className="pointer-events-none absolute -top-10 -right-10 size-28 rounded-full bg-[radial-gradient(circle,rgba(255,200,0,.12),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-      <div className="flex items-center justify-between">
-        <p className="etiqueta">{etiqueta}</p>
-        <Icono className="size-4 text-muted transition-colors group-hover:text-accent" />
+      {onActivar && (
+        <>
+          <button
+            onClick={onActivar}
+            aria-pressed={activa}
+            aria-label={`Ver ${etiqueta.toLowerCase()} en el mapa`}
+            className="absolute inset-0 z-0 rounded-[inherit]"
+          />
+          <div className="pointer-events-none absolute -top-10 -right-10 size-28 rounded-full bg-[radial-gradient(circle,rgba(255,200,0,.12),transparent_70%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+        </>
+      )}
+      <div className="pointer-events-none relative z-10">
+        <div className="flex items-center justify-between gap-2">
+          <p className="etiqueta">{etiqueta}</p>
+          {activa ? (
+            <motion.span
+              layoutId="kpi-en-mapa"
+              transition={RESORTE.pastilla}
+              className="rounded-full bg-action-primary px-1.5 py-px text-[10px] font-bold whitespace-nowrap text-action-primary-text"
+            >
+              En el mapa
+            </motion.span>
+          ) : (
+            <Icono
+              className={`size-4 text-muted transition-colors ${onActivar ? "group-hover:text-accent" : ""}`}
+            />
+          )}
+        </div>
+        <div className="mt-2">{children}</div>
+        {pie && <div className="mt-1.5 text-xs text-muted">{pie}</div>}
       </div>
-      <div className="mt-2">{children}</div>
-      {pie && <div className="mt-1.5 text-xs text-muted">{pie}</div>}
     </motion.div>
   );
 }
 
-export function TarjetasKpi({ r, nacional }: { r: Resumen; nacional: boolean }) {
+export function TarjetasKpi({
+  r,
+  nacional,
+  metrica,
+  onMetrica,
+}: {
+  r: Resumen;
+  nacional: boolean;
+  metrica: Metrica;
+  onMetrica: (m: Metrica) => void;
+}) {
   const totalCanales = Object.values(r.canales).reduce((a, b) => a + b, 0);
 
   return (
@@ -65,11 +108,29 @@ export function TarjetasKpi({ r, nacional }: { r: Resumen; nacional: boolean }) 
         animate="visible"
         className="panel relative col-span-2 overflow-hidden border-l-[3px] border-l-gold-500 p-5"
       >
+        <button
+          onClick={() => onMetrica("aportes")}
+          aria-pressed={metrica === "aportes"}
+          aria-label="Ver aportes en el mapa"
+          className="absolute inset-0 z-0 rounded-[inherit]"
+        />
         <div className="pointer-events-none absolute -top-16 -right-12 size-48 rounded-full bg-[radial-gradient(circle,rgba(255,200,0,.16),transparent_65%)]" />
-        <div className="flex items-start justify-between">
+        <div className="pointer-events-none relative z-10 flex items-start justify-between">
           <div>
-            <p className="etiqueta">Aportes ciudadanos recibidos</p>
+            <p className="etiqueta flex items-center gap-2">
+              Aportes ciudadanos recibidos
+              {metrica === "aportes" && (
+                <motion.span
+                  layoutId="kpi-en-mapa"
+                  transition={RESORTE.pastilla}
+                  className="rounded-full bg-action-primary px-1.5 py-px text-[10px] font-bold tracking-normal whitespace-nowrap text-action-primary-text normal-case"
+                >
+                  En el mapa
+                </motion.span>
+              )}
+            </p>
             <CifraAnimada
+              variante="display"
               valor={r.aportes}
               className="mt-1 block text-[2.6rem] leading-none font-bold text-primary"
             />
@@ -85,7 +146,7 @@ export function TarjetasKpi({ r, nacional }: { r: Resumen; nacional: boolean }) 
         </div>
 
         {/* Canales: barra apilada con separadores y etiquetas directas */}
-        <div className="mt-4 flex h-2 gap-[2px] overflow-hidden rounded-full">
+        <div className="pointer-events-none relative z-10 mt-4 flex h-2 gap-[2px] overflow-hidden rounded-full">
           {(Object.keys(CANALES) as Canal[]).map((c) =>
             r.canales[c] ? (
               <motion.div
@@ -94,13 +155,13 @@ export function TarjetasKpi({ r, nacional }: { r: Resumen; nacional: boolean }) 
                 style={{ background: CANALES[c].color }}
                 initial={{ flexGrow: 0 }}
                 animate={{ flexGrow: r.canales[c] }}
-                transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.9, ease: EASE.salida }}
                 title={`${CANALES[c].etiqueta}: ${r.canales[c]}`}
               />
             ) : null,
           )}
         </div>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        <div className="pointer-events-none relative z-10 mt-2 flex flex-wrap gap-x-4 gap-y-1">
           {(Object.keys(CANALES) as Canal[]).map((c) => {
             const { etiqueta, icono: Icono, color } = CANALES[c];
             return (
@@ -127,6 +188,7 @@ export function TarjetasKpi({ r, nacional }: { r: Resumen; nacional: boolean }) 
           <span className="cifra text-3xl font-bold text-muted">—</span>
         ) : (
           <CifraAnimada
+            variante="display"
             valor={r.porcentaje}
             decimales={1}
             sufijo="%"
@@ -138,19 +200,25 @@ export function TarjetasKpi({ r, nacional }: { r: Resumen; nacional: boolean }) 
             className="h-full rounded-full bg-gold-500"
             initial={{ width: 0 }}
             animate={{ width: `${r.porcentaje ?? 0}%` }}
-            transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 1, ease: EASE.salida }}
           />
         </div>
       </Tarjeta>
 
       <Tarjeta i={2} icono={MapPinned} etiqueta="Municipios" pie="con aportes ubicados">
-        <CifraAnimada valor={r.municipiosConAportes} className="text-3xl font-bold" />
+        <CifraAnimada
+          variante="display"
+          valor={r.municipiosConAportes}
+          className="text-3xl font-extrabold"
+        />
       </Tarjeta>
 
       <Tarjeta
         i={3}
         icono={Radar}
         etiqueta="Necesidades"
+        activa={metrica === "necesidades"}
+        onActivar={() => onMetrica("necesidades")}
         pie={
           <>
             <span className="cifra text-secondary">{formatoNumero(r.respondidas)}</span> con
@@ -158,13 +226,19 @@ export function TarjetasKpi({ r, nacional }: { r: Resumen; nacional: boolean }) 
           </>
         }
       >
-        <CifraAnimada valor={r.necesidades} className="text-3xl font-bold" />
+        <CifraAnimada
+          variante="display"
+          valor={r.necesidades}
+          className="text-3xl font-extrabold"
+        />
       </Tarjeta>
 
       <Tarjeta
         i={4}
         icono={Siren}
         etiqueta="Alertas activas"
+        activa={metrica === "alertas"}
+        onActivar={() => onMetrica("alertas")}
         pie={
           <>
             <span className="cifra text-secondary">{formatoNumero(r.etapasAlerta.recibida)}</span>{" "}
@@ -173,7 +247,11 @@ export function TarjetasKpi({ r, nacional }: { r: Resumen; nacional: boolean }) 
         }
       >
         <div className="flex items-center gap-2">
-          <CifraAnimada valor={r.alertasActivas} className="text-3xl font-bold" />
+          <CifraAnimada
+            variante="display"
+            valor={r.alertasActivas}
+            className="text-3xl font-extrabold"
+          />
           {r.alertasActivas > 0 && (
             <span className="relative flex size-2.5">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-danger opacity-60" />

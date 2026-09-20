@@ -8,8 +8,15 @@
   --font-body: var(--fuente-inter), "Nunito Sans", system-ui, sans-serif;
   --font-mono: var(--fuente-mono), ui-monospace, monospace;
 
-  --glass-bg: rgba(10, 26, 58, 0.62);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  /* Vidrio más opaco y con menos desenfoque: se lee mejor sobre un mapa claro u oscuro y el
+     navegador no recalcula un blur grande en cada cuadro del globo. */
+  --glass-bg: rgba(8, 23, 51, 0.84);
+  --glass-border: rgba(255, 255, 255, 0.12);
+}
+
+/* Contraste: el texto tenue del kit (55 %) no llega a AA sobre navy; se sube sin tocar tokens.css. */
+[data-theme="dark"] {
+  --text-muted: rgba(237, 241, 247, 0.64);
 }
 
 @theme inline {
@@ -21,6 +28,11 @@
 html,
 body {
   height: 100%;
+}
+
+/* El modal bloquea el scroll del <body>: sin esto, al irse la barra la página daría un salto. */
+html {
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -40,6 +52,14 @@ body {
 @layer components {
 .cifra {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Cifras grandes: la de display con números tabulares. En la mono la coma decimal ocupa un
+   carácter entero y los porcentajes se leían «64 , 8 %». */
+.cifra-display {
+  font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
@@ -84,8 +104,8 @@ body {
 .vidrio {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .panel {
@@ -186,6 +206,19 @@ body {
   color: var(--text-muted) !important;
 }
 .mapboxgl-canvas:focus {
+  outline: none;
+}
+.mapboxgl-canvas:focus-visible {
+  outline: 2px solid var(--gold-500);
+  outline-offset: -4px;
+}
+
+/* Foco de teclado con la marca: dorado, separado y solo cuando se navega con teclado. */
+:where(a, button, summary, [role="tab"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--gold-500);
+  outline-offset: 2px;
+}
+:where(input, textarea, select):focus-visible {
   outline: none;
 }
 

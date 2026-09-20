@@ -1,17 +1,33 @@
 "use client";
 
 import Image from "next/image";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowRight, Eye, EyeOff, KeyRound, LoaderCircle, ShieldCheck } from "lucide-react";
+import {
+  ArrowBigUp,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  KeyRound,
+  LoaderCircle,
+  ShieldCheck,
+} from "lucide-react";
 import { ingresar, type EstadoAcceso } from "./acciones";
+import { EASE } from "@/lib/ui/movimiento";
 
 const inicial: EstadoAcceso = { error: null, intento: 0 };
-const suave = [0.22, 1, 0.36, 1] as const;
+const suave = EASE.salida;
 
 export function FormularioAcceso() {
   const [estado, accion, enviando] = useActionState(ingresar, inicial);
   const [visible, setVisible] = useState(false);
+  const [mayusculas, setMayusculas] = useState(false);
+  const campo = useRef<HTMLInputElement>(null);
+
+  // Tras un intento fallido el campo queda listo para corregir: con foco y todo seleccionado.
+  useEffect(() => {
+    if (estado.intento > 0) campo.current?.select();
+  }, [estado.intento]);
 
   return (
     <main className="relative isolate grid min-h-dvh overflow-hidden lg:grid-cols-[1.15fr_1fr]">
@@ -26,7 +42,7 @@ export function FormularioAcceso() {
           src="/linea-grafica-patria/assets/fondo-bandera-dark.png"
           alt=""
           fill
-          priority
+          preload
           sizes="100vw"
           className="object-cover"
         />
@@ -71,7 +87,7 @@ export function FormularioAcceso() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.6 }}
           >
-            Tablero territorial · Entrega 1
+            Tablero territorial · Participación ciudadana
           </motion.p>
           <h1 className="titulo-display text-[clamp(2.4rem,1.2rem+4.4vw,5rem)] font-black uppercase">
             {["Sistema de Escucha", "y Planeación", "Nacional"].map((linea, i) => (
@@ -118,9 +134,7 @@ export function FormularioAcceso() {
               ? { x: [0, -12, 10, -8, 6, -3, 0], opacity: 1, y: 0, scale: 1 }
               : { opacity: 1, y: 0, scale: 1 }
           }
-          transition={
-            estado.error ? { duration: 0.5 } : { duration: 0.9, delay: 0.8, ease: suave }
-          }
+          transition={estado.error ? { duration: 0.5 } : { duration: 0.9, delay: 0.8, ease: suave }}
           className="vidrio relative w-full max-w-md rounded-lg p-8 shadow-[var(--shadow-deep)] sm:p-10"
         >
           <div className="pointer-events-none absolute inset-x-10 -top-px h-px bg-gradient-to-r from-transparent via-gold-500 to-transparent" />
@@ -139,11 +153,19 @@ export function FormularioAcceso() {
             <label htmlFor="token" className="etiqueta block">
               Token de acceso
             </label>
-            <div className="group relative">
+            {/* El rechazo se siente en el campo, no solo se lee: una sacudida corta por intento. */}
+            <motion.div
+              key={estado.intento}
+              animate={estado.error ? { x: [0, -9, 8, -5, 4, 0] } : undefined}
+              transition={{ duration: 0.42, ease: "easeOut" }}
+              className="group relative"
+            >
               <KeyRound className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted transition-colors group-focus-within:text-accent" />
               <input
+                ref={campo}
                 id="token"
                 name="token"
+                onKeyUp={(e) => setMayusculas(e.getModifierState("CapsLock"))}
                 type={visible ? "text" : "password"}
                 autoComplete="current-password"
                 autoFocus
@@ -161,7 +183,12 @@ export function FormularioAcceso() {
               >
                 {visible ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
               </button>
-            </div>
+            </motion.div>
+            {mayusculas && (
+              <p className="-mt-2 flex items-center gap-1.5 text-xs text-warning">
+                <ArrowBigUp className="size-4" /> Bloq Mayús está activado
+              </p>
+            )}
 
             <AnimatePresence>
               {estado.error && (
@@ -206,7 +233,7 @@ export function FormularioAcceso() {
               className="opacity-90"
             />
             <p className="max-w-[12rem] text-right text-xs text-muted">
-              Sesión cifrada · vence a las 12 horas
+              Acceso protegido · uso institucional
             </p>
           </div>
         </motion.div>

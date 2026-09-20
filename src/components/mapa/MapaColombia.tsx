@@ -4,8 +4,8 @@ import mapboxgl from "mapbox-gl";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { Globe, MousePointerClick } from "lucide-react";
+import { AnimatePresence, motion, useMotionValue, useSpring, type MotionValue } from "motion/react";
+import { Globe, MapPinOff, MousePointerClick, Pause, Play } from "lucide-react";
 import cajas from "@/lib/geo/cajas.json";
 import {
   METRICAS,
@@ -18,7 +18,17 @@ import type { ValoresMapa } from "@/lib/datos/agregar";
 import { COLOMBIA_ISO, SIN_DATOS, type CifrasPais } from "@/lib/datos/internacional";
 import type { DatosTablero } from "@/lib/datos/tipos";
 import { RELLENO_VACIO, colorPorT, estado, exp, reducirMovimiento } from "./estilo";
-import { CAPAS_PAISES, agregarCapasPaises, crearGiro, type MapaPaises, type PropsPais } from "./paises";
+import { RESORTE } from "@/lib/ui/movimiento";
+import {
+  CAPAS_PAISES,
+  agregarCapasPaises,
+  continenteEs,
+  crearGiro,
+  zoomGlobo,
+  type LibreGlobo,
+  type MapaPaises,
+  type PropsPais,
+} from "./paises";
 
 export type Ambito = "nacional" | "internacional";
 
@@ -36,6 +46,10 @@ type Props = {
   onSeleccionar: (codigo: string | null) => void;
   onEntrar: (dpto: string) => void;
   onSalir: () => void;
+  /** Hay algo encima del mapa (el modal de ejes): el globo no gira a espaldas de nadie. */
+  pausado?: boolean;
+  /** Lo que acompaña a la leyenda en la franja inferior (pista de uso, accesos). */
+  pie?: React.ReactNode;
 };
 
 type Objetivo = { fuente: "departamentos" | "municipios" | "paises"; codigo: string; dpto: string };
@@ -48,10 +62,23 @@ type Objetivo = { fuente: "departamentos" | "municipios" | "paises"; codigo: str
  */
 const mapaListo = (map: mapboxgl.Map | null): map is mapboxgl.Map =>
   Boolean(map && map.getLayer("dep-relleno") && map.getLayer("pais-relleno"));
-type Punto = Objetivo & { x: number; y: number; ancho: number; alto: number };
+
+/** Encuadre del globo: centro que deja a Colombia a la vista y franja libre bajo los controles. */
+const CENTRO_MUNDO: [number, number] = [-62, 8];
+const libreGlobo = (ancho: number): LibreGlobo =>
+  ancho < 640 ? { top: 120, bottom: 8 } : { top: 64, bottom: 8 };
+const rellenoGlobo = (libre: LibreGlobo) => ({
+  top: libre.top,
+  bottom: libre.bottom,
+  left: 0,
+  right: 0,
+});
+const TOOLTIP = { ancho: 240, alto: 214, margen: 18 };
 type FC = FeatureCollection<Geometry, { codigo: string; dpto?: string }>;
 
 // Territorio continental: San Andrés queda a la vista en el borde sin encoger el país.
+const SIN_MUNICIPIOS: FC = { type: "FeatureCollection", features: [] };
+
 const COLOMBIA: mapboxgl.LngLatBoundsLike = [
   [-79.1, -4.25],
   [-66.85, 12.5],
@@ -250,7 +277,10 @@ function agregarCapas(map: mapboxgl.Map, dep: FC, mun: FC) {
         "\n",
         {},
         ["get", "nombre"],
-        { "font-scale": 0.62, "text-font": exp(["literal", ["DIN Pro Medium", "Arial Unicode MS Regular"]]) },
+        {
+          "font-scale": 0.62,
+          "text-font": exp(["literal", ["DIN Pro Medium", "Arial Unicode MS Regular"]]),
+        },
       ]),
       "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
       "text-size": exp(["interpolate", ["linear"], ["get", "t"], 0, 13, 1, 19]),
@@ -273,11 +303,24 @@ export default function MapaColombia(props: Props) {
   const mapaRef = useRef<mapboxgl.Map | null>(null);
   const geoRef = useRef<{ dep: FC; mun: FC; paises: MapaPaises } | null>(null);
   const giroRef = useRef<ReturnType<typeof crearGiro> | null>(null);
+  const zoomManual = useRef(false);
   const [paises, setPaises] = useState<Map<string, PropsPais>>(new Map());
   const ultimo = useRef(props);
+  const velo = useRef<HTMLDivElement>(null);
+  const ambitoPrevio = useRef<Ambito>("nacional");
   const [capasListas, setCapasListas] = useState(false);
+  const [municipiosListos, setMunicipiosListos] = useState(false);
+  const [fallo, setFallo] = useState(false);
   const [introTerminada, setIntroTerminada] = useState(false);
-  const [punto, setPunto] = useState<Punto | null>(null);
+  // El tooltip sigue al cursor con valores de movimiento: React solo se entera cuando cambia
+  // el territorio bajo el cursor, no en cada píxel.
+  const [bajoCursor, setBajoCursor] = useState<Objetivo | null>(null);
+  const xCursor = useMotionValue(0);
+  const yCursor = useMotionValue(0);
+  const xTooltip = useSpring(xCursor, RESORTE.tooltip);
+  const yTooltip = useSpring(yCursor, RESORTE.tooltip);
+  const tooltip = useRef({ xCursor, yCursor, xTooltip, yTooltip });
+  const [giroPausado, setGiroPausado] = useState(false);
 
   useEffect(() => {
     ultimo.current = props;
@@ -312,22 +355,50 @@ export default function MapaColombia(props: Props) {
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "bottom-right");
 
+    const traer = <T,>(ruta: string) =>
+      fetch(ruta).then((r) => {
+        if (!r.ok) throw new Error(`${ruta}: ${r.status}`);
+        return r.json() as Promise<T>;
+      });
     const geo = Promise.all([
-      fetch("/data/geo/departamentos.json").then((r) => r.json() as Promise<FC>),
-      fetch("/data/geo/municipios.json").then((r) => r.json() as Promise<FC>),
-      fetch("/data/geo/paises.json").then((r) => r.json() as Promise<MapaPaises>),
+      traer<FC>("/data/geo/departamentos.json"),
+      traer<MapaPaises>("/data/geo/paises.json"),
     ]);
+    // Los municipios pesan 2 MB y no hacen falta hasta entrar a un departamento: bajan en
+    // paralelo, pero la entrada no los espera.
+    const geoMunicipios = traer<FC>("/data/geo/municipios.json");
+    geo.catch(() => !cancelado && setFallo(true));
+    geoMunicipios.catch(() => {});
 
-    map.on("style.load", () => vestirMapaBase(map));
+    // Un fallo antes de tener estilo (token, red) deja el lienzo en negro: se dice, no se calla.
+    let conEstilo = false;
+    map.on("error", () => !conEstilo && !cancelado && setFallo(true));
+    map.on("style.load", () => {
+      conEstilo = true;
+      vestirMapaBase(map);
+    });
 
     map.on("load", async () => {
-      if (!reducirMovimiento()) {
-        map.easeTo({ center: [-74, 4.5], zoom: 1.9, duration: 2200, easing: (t) => t });
+      // Un solo vuelo: un primer `easeTo` lineal que luego cortaba el `fitBounds` quebraba la
+      // trayectoria. La geometría ligera (sin municipios) llega antes que el estilo casi siempre.
+      let dep: FC, mundo: MapaPaises;
+      try {
+        [dep, mundo] = await geo;
+      } catch {
+        return;
       }
-      const [dep, mun, mundo] = await geo;
       if (cancelado) return;
-      geoRef.current = { dep, mun, paises: mundo };
-      agregarCapas(map, dep, mun);
+      const geometria = { dep, mun: SIN_MUNICIPIOS, paises: mundo };
+      geoRef.current = geometria;
+      agregarCapas(map, dep, SIN_MUNICIPIOS);
+      geoMunicipios
+        .then((mun) => {
+          if (cancelado || geoRef.current !== geometria) return;
+          geometria.mun = mun;
+          (map.getSource("municipios") as mapboxgl.GeoJSONSource | undefined)?.setData(mun);
+          setMunicipiosListos(true);
+        })
+        .catch(() => {});
       agregarCapasPaises(map, mundo);
       giroRef.current = crearGiro(map);
       setPaises(new Map(mundo.features.map((f) => [f.properties.codigo, f.properties])));
@@ -337,13 +408,14 @@ export default function MapaColombia(props: Props) {
       // dejaba el mapa esperando un evento que, según la carga, podía no llegar.
       map.fitBounds(COLOMBIA, {
         padding: relleno(map.getContainer().getBoundingClientRect()),
-        duration: reducirMovimiento() ? 0 : 2600,
-        curve: 1.5,
+        duration: reducirMovimiento() ? 0 : 2800,
+        curve: 1.2,
+        easing: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
         essential: true,
       });
       const aterrizado = setTimeout(
         () => !cancelado && setIntroTerminada(true),
-        reducirMovimiento() ? 0 : 2700,
+        reducirMovimiento() ? 0 : 2900,
       );
       limpiezas.push(() => clearTimeout(aterrizado));
     });
@@ -382,37 +454,88 @@ export default function MapaColombia(props: Props) {
       hover = siguiente;
     };
 
-    map.on("mousemove", (e) => {
-      if (!map.getLayer("dep-relleno")) return;
-      const o = objetivo(e.point);
+    // Hover: como mucho una consulta al mapa por cuadro, y sin tooltip donde no hay cursor.
+    const sinHover = window.matchMedia("(hover: none)").matches;
+    let pendiente: mapboxgl.Point | null = null;
+    let cuadro = 0;
+    let visible = false;
+    let quieto: ReturnType<typeof setTimeout> | undefined;
+
+    const ocultar = () => {
+      marcarHover(null);
+      visible = false;
+      setBajoCursor(null);
+    };
+    const atender = () => {
+      cuadro = 0;
+      const p = pendiente;
+      if (!p || !map.getLayer("dep-relleno")) return;
+      const o = objetivo(p);
+      const cambio = o?.codigo !== hover?.codigo;
       marcarHover(o);
       map.getCanvas().style.cursor = o ? "pointer" : "";
-      if (ultimo.current.ambito === "internacional") {
-        if (o) giroRef.current?.pausar();
-        else giroRef.current?.reanudarPronto(1200);
+
+      const { ambito, cifrasPaises, metrica } = ultimo.current;
+      if (ambito === "internacional") {
+        // El globo solo se detiene donde hay algo que leer; sobre el resto sigue su curso.
+        const conDatos = o ? (cifrasPaises.get(o.codigo)?.[metrica] ?? 0) > 0 : false;
+        if (conDatos) giroRef.current?.frenarSuave();
+        else giroRef.current?.soltar(600);
+        // Cursor aparcado: a los 4 s el globo retoma el giro y el tooltip se retira.
+        clearTimeout(quieto);
+        quieto = setTimeout(() => {
+          giroRef.current?.soltar(0);
+          ocultar();
+        }, 4000);
       }
-      setPunto(
-        o
-          ? {
-              ...o,
-              x: e.point.x,
-              y: e.point.y,
-              ancho: map.getContainer().clientWidth,
-              alto: map.getContainer().clientHeight,
-            }
-          : null,
-      );
+
+      if (!o) {
+        if (visible) ocultar();
+        return;
+      }
+      const { clientWidth: ancho, clientHeight: alto } = map.getContainer();
+      const x =
+        p.x + TOOLTIP.ancho + 2 * TOOLTIP.margen > ancho
+          ? p.x - TOOLTIP.ancho - TOOLTIP.margen
+          : p.x + TOOLTIP.margen;
+      const y =
+        p.y + TOOLTIP.alto + TOOLTIP.margen > alto ? p.y - TOOLTIP.alto : p.y + TOOLTIP.margen;
+      const t = tooltip.current;
+      t.xCursor.set(x);
+      t.yCursor.set(y);
+      if (!visible) {
+        // Al reaparecer nace en su sitio: no cruza el mapa volando desde la posición anterior.
+        t.xTooltip.jump(x);
+        t.yTooltip.jump(y);
+        visible = true;
+      }
+      if (cambio) setBajoCursor(o);
+    };
+
+    map.on("mousemove", (e) => {
+      if (sinHover) return;
+      pendiente = e.point;
+      if (!cuadro) cuadro = requestAnimationFrame(atender);
     });
     map.on("mouseout", () => {
-      marcarHover(null);
-      setPunto(null);
-      giroRef.current?.reanudarPronto(1200);
+      pendiente = null;
+      clearTimeout(quieto);
+      ocultar();
+      giroRef.current?.soltar(0);
+    });
+    limpiezas.push(() => {
+      cancelAnimationFrame(cuadro);
+      clearTimeout(quieto);
     });
 
     map.on("click", (e) => {
       if (!map.getLayer("dep-relleno")) return;
       // En el mundo no hay selección: se mira y, sobre Colombia, se entra al detalle.
-      if (ultimo.current.ambito === "internacional") return;
+      if (ultimo.current.ambito === "internacional") {
+        // Un clic basta: el doble clic no existe en táctil y nadie lo adivina con ratón.
+        if (objetivo(e.point)?.codigo === COLOMBIA_ISO) ultimo.current.onAmbito("nacional");
+        return;
+      }
       const o = objetivo(e.point);
       const { departamento, onSeleccionar } = ultimo.current;
       // Con un departamento abierto, los vecinos atenuados solo se exploran con doble clic.
@@ -433,7 +556,22 @@ export default function MapaColombia(props: Props) {
       if (o.dpto !== departamento) onEntrar(o.dpto);
     });
 
-    const observador = new ResizeObserver(() => map.resize());
+    // Un zoom hecho a mano manda sobre el reencuadre automático del globo.
+    map.on("zoomend", (e) => {
+      if ((e as { originalEvent?: unknown }).originalEvent) zoomManual.current = true;
+    });
+    let reencuadre: ReturnType<typeof setTimeout> | undefined;
+    const observador = new ResizeObserver(() => {
+      map.resize();
+      clearTimeout(reencuadre);
+      reencuadre = setTimeout(() => {
+        if (ultimo.current.ambito !== "internacional" || zoomManual.current) return;
+        const { clientWidth: w, clientHeight: h } = map.getContainer();
+        const libre = libreGlobo(w);
+        giroRef.current?.fijarZoom(zoomGlobo(w, h, libre), rellenoGlobo(libre));
+      }, 120);
+    });
+    limpiezas.push(() => clearTimeout(reencuadre));
     observador.observe(contenedor.current);
 
     return () => {
@@ -447,13 +585,22 @@ export default function MapaColombia(props: Props) {
       mapaRef.current = null;
       // El próximo mapa arranca de cero: sin esto, los efectos pintarían sobre un estilo a medio cargar.
       setCapasListas(false);
+      setMunicipiosListos(false);
       setIntroTerminada(false);
     };
   }, []);
 
   // Colores y cifras según métrica, filtros y nivel.
-  const { valores, cifrasPaises, ambito, metrica, departamento, seleccion, departamentos, municipios } =
-    props;
+  const {
+    valores,
+    cifrasPaises,
+    ambito,
+    metrica,
+    departamento,
+    seleccion,
+    departamentos,
+    municipios,
+  } = props;
   useEffect(() => {
     const map = mapaRef.current;
     const geo = geoRef.current;
@@ -466,7 +613,10 @@ export default function MapaColombia(props: Props) {
         const n = cifrasPaises.get(f.properties.codigo)?.[metrica] ?? 0;
         map.setFeatureState(
           { source: "paises", id: f.properties.codigo },
-          { t: n > 0 && maxPais ? Math.sqrt(n / maxPais) : -1, activo: f.properties.codigo === COLOMBIA_ISO },
+          {
+            t: n > 0 && maxPais ? Math.sqrt(n / maxPais) : -1,
+            activo: f.properties.codigo === COLOMBIA_ISO,
+          },
         );
       }
       const conDatos: Feature[] = [];
@@ -535,7 +685,17 @@ export default function MapaColombia(props: Props) {
       type: "FeatureCollection",
       features: puntos,
     });
-  }, [valores, cifrasPaises, ambito, metrica, departamento, capasListas, departamentos, municipios]);
+  }, [
+    valores,
+    cifrasPaises,
+    ambito,
+    metrica,
+    departamento,
+    capasListas,
+    municipiosListos,
+    departamentos,
+    municipios,
+  ]);
 
   // Selección
   useEffect(() => {
@@ -556,7 +716,14 @@ export default function MapaColombia(props: Props) {
     if (!mapaListo(map) || !geo || !capasListas) return;
 
     const filtro = exp(["==", ["get", "dpto"], departamento ?? "__"]);
-    for (const capa of ["mun-relleno", "mun-brillo", "mun-borde", "mun-3d", "mun-resplandor", "mun-contorno"])
+    for (const capa of [
+      "mun-relleno",
+      "mun-brillo",
+      "mun-borde",
+      "mun-3d",
+      "mun-resplandor",
+      "mun-contorno",
+    ])
       map.setFilter(capa, filtro);
     map.setPaintProperty("mun-relleno", "fill-opacity", departamento ? 0.94 : 0);
     map.setPaintProperty("mun-borde", "line-opacity", departamento ? 1 : 0);
@@ -565,13 +732,24 @@ export default function MapaColombia(props: Props) {
       const codigo = f.properties.codigo;
       map.setFeatureState(
         { source: "departamentos", id: codigo },
-        { atenuado: Boolean(departamento) && codigo !== departamento, activo: codigo === departamento },
+        {
+          atenuado: Boolean(departamento) && codigo !== departamento,
+          activo: codigo === departamento,
+        },
       );
     }
 
     const nacional = ambito === "nacional";
-    map.setLayoutProperty("dep-3d", "visibility", nacional && modo3d && !departamento ? "visible" : "none");
-    map.setLayoutProperty("mun-3d", "visibility", nacional && modo3d && departamento ? "visible" : "none");
+    map.setLayoutProperty(
+      "dep-3d",
+      "visibility",
+      nacional && modo3d && !departamento ? "visible" : "none",
+    );
+    map.setLayoutProperty(
+      "mun-3d",
+      "visibility",
+      nacional && modo3d && departamento ? "visible" : "none",
+    );
 
     if (!introTerminada || !nacional) return;
     const caja = departamento ? (cajas as Record<string, number[]>)[departamento] : null;
@@ -600,51 +778,85 @@ export default function MapaColombia(props: Props) {
     if (!mapaListo(map) || !capasListas || !giro) return;
 
     const internacional = ambito === "internacional";
-    for (const capa of CAPAS_PAISES)
-      map.setLayoutProperty(capa, "visibility", internacional ? "visible" : "none");
-    for (const capa of ["dep-relleno", "dep-brillo", "dep-borde", "dep-resplandor", "dep-contorno"])
-      map.setLayoutProperty(capa, "visibility", internacional ? "none" : "visible");
-    for (const capa of ["mun-relleno", "mun-brillo", "mun-borde", "mun-resplandor", "mun-contorno"])
-      map.setLayoutProperty(capa, "visibility", internacional ? "none" : "visible");
+    const cambiarCapas = () => {
+      if (!mapaListo(map)) return;
+      for (const capa of CAPAS_PAISES)
+        map.setLayoutProperty(capa, "visibility", internacional ? "visible" : "none");
+      for (const capa of [
+        "dep-relleno",
+        "dep-brillo",
+        "dep-borde",
+        "dep-resplandor",
+        "dep-contorno",
+      ])
+        map.setLayoutProperty(capa, "visibility", internacional ? "none" : "visible");
+      for (const capa of [
+        "mun-relleno",
+        "mun-brillo",
+        "mun-borde",
+        "mun-resplandor",
+        "mun-contorno",
+      ])
+        map.setLayoutProperty(capa, "visibility", internacional ? "none" : "visible");
+    };
+    // Las capas con feature-state no transicionan: el relevo se hace bajo un velo breve, en vez
+    // de un corte seco. En la primera pasada (carga) no hay nada que relevar.
+    const hayRelevo = ambitoPrevio.current !== ambito && !reducirMovimiento();
+    ambitoPrevio.current = ambito;
+    let relevo: ReturnType<typeof setTimeout> | undefined;
+    if (hayRelevo) {
+      velo.current?.animate([{ opacity: 0 }, { opacity: 1, offset: 0.3 }, { opacity: 0 }], {
+        duration: 750,
+        easing: "ease-in-out",
+      });
+      relevo = setTimeout(cambiarCapas, 225);
+    } else cambiarCapas();
+    const limpiar = () => clearTimeout(relevo);
 
     if (!internacional) {
       giro.detener();
-      return;
+      return limpiar;
     }
+    // El disco se encuadra según el contenedor: ocupa ~85 % del lado menor en cualquier pantalla.
+    const { clientWidth: w, clientHeight: h } = map.getContainer();
+    const libre = libreGlobo(w);
+    const zoom = zoomGlobo(w, h, libre);
+    zoomManual.current = false;
     map.easeTo({
-      center: [-70, 12],
-      zoom: 1.45,
+      center: CENTRO_MUNDO,
+      zoom,
       pitch: 0,
       bearing: 0,
-      duration: reducirMovimiento() ? 0 : 1800,
+      padding: rellenoGlobo(libre),
+      duration: reducirMovimiento() ? 0 : 2200,
+      easing: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
       essential: true,
     });
-    const arranque = setTimeout(() => giro.iniciar(), reducirMovimiento() ? 0 : 1900);
-    return () => clearTimeout(arranque);
+    // Sin temporizador: mientras dura el vuelo el giro calla (`isMoving`) y luego arranca con rampa.
+    giro.iniciar(zoom);
+    return limpiar;
   }, [ambito, capasListas]);
 
-  // Esc vuelve a la vista nacional
+  // Algo encima del mapa, o la persona pidió pausa: el globo se queda quieto.
+  const { pausado = false } = props;
   useEffect(() => {
-    const alPresionar = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      const { ambito, onAmbito, onSalir } = ultimo.current;
-      if (ambito === "internacional") onAmbito("nacional");
-      else onSalir();
-    };
-    window.addEventListener("keydown", alPresionar);
-    return () => window.removeEventListener("keydown", alPresionar);
-  }, []);
+    giroRef.current?.bloquear(pausado);
+  }, [pausado, capasListas]);
+  useEffect(() => {
+    giroRef.current?.pausaUsuario(giroPausado);
+  }, [giroPausado, capasListas]);
 
   // Leyenda
   const v = valores[metrica];
-  const maxEscala = ambito === "internacional"
-    ? Math.max(0, ...[...cifrasPaises.values()].map((c) => c[metrica]))
-    : departamento
-    ? Math.max(
-        0,
-        ...[...v.municipios].filter(([c]) => c.startsWith(departamento)).map(([, n]) => n),
-      )
-    : Math.max(0, ...v.departamentos.values());
+  const maxEscala =
+    ambito === "internacional"
+      ? Math.max(0, ...[...cifrasPaises.values()].map((c) => c[metrica]))
+      : departamento
+        ? Math.max(
+            0,
+            ...[...v.municipios].filter(([c]) => c.startsWith(departamento)).map(([, n]) => n),
+          )
+        : Math.max(0, ...v.departamentos.values());
   const nombreDepto = departamento ? nombrePropio(departamentos[departamento]?.nombre ?? "") : "";
 
   return (
@@ -653,10 +865,34 @@ export default function MapaColombia(props: Props) {
       <div className="absolute inset-0">
         <div ref={contenedor} className="h-full w-full" />
       </div>
+      {/* Velo del relevo Colombia ↔ Mundo */}
+      <div ref={velo} className="pointer-events-none absolute inset-0 bg-[#040C1D] opacity-0" />
+
+      {/* El mapa puede fallar (token, red) sin tumbar el tablero: las cifras siguen a la vista */}
+      {fallo && (
+        <div
+          role="alert"
+          className="absolute inset-0 z-30 grid place-items-center bg-[#040C1D] p-6"
+        >
+          <div className="max-w-sm text-center">
+            <MapPinOff className="mx-auto size-8 text-accent" />
+            <p className="font-display mt-3 text-lg font-extrabold">No se pudo cargar el mapa</p>
+            <p className="mt-1 text-sm text-secondary">
+              Las cifras y las narrativas siguen disponibles. Revise la conexión e intente de nuevo.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 h-10 rounded-sm bg-action-primary px-4 text-xs font-extrabold tracking-[0.06em] text-action-primary-text uppercase"
+            >
+              Reintentar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Carga de cartografía */}
       <AnimatePresence>
-        {!capasListas && (
+        {!capasListas && !fallo && (
           <motion.div
             className="pointer-events-none absolute inset-0 grid place-items-center"
             exit={{ opacity: 0 }}
@@ -672,54 +908,83 @@ export default function MapaColombia(props: Props) {
       {/* Tooltip */}
       <AnimatePresence>
         {/* Al abrir un departamento el cursor puede seguir sobre él: ese tooltip ya no aplica. */}
-        {punto && !(punto.fuente === "departamentos" && punto.codigo === departamento) && (
-          <Tooltip
-            key="tooltip"
-            punto={punto}
-            valores={valores}
-            metrica={metrica}
-            departamento={departamento}
-            departamentos={departamentos}
-            municipios={municipios}
-            paises={paises}
-            cifrasPaises={cifrasPaises}
-          />
-        )}
+        {bajoCursor &&
+          !(bajoCursor.fuente === "departamentos" && bajoCursor.codigo === departamento) && (
+            <Tooltip
+              key="tooltip"
+              objetivo={bajoCursor}
+              x={xTooltip}
+              y={yTooltip}
+              valores={valores}
+              metrica={metrica}
+              departamento={departamento}
+              departamentos={departamentos}
+              municipios={municipios}
+              paises={paises}
+              cifrasPaises={cifrasPaises}
+            />
+          )}
       </AnimatePresence>
 
-      {/* Leyenda */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: introTerminada ? 1 : 0, y: introTerminada ? 0 : 12 }}
-        transition={{ duration: 0.6 }}
-        className="vidrio pointer-events-none absolute bottom-4 left-4 w-64 rounded-md p-3.5 sm:bottom-6 sm:left-6"
-      >
-        <p className="etiqueta mb-2 truncate">
-          {METRICAS[metrica].etiqueta} ·{" "}
-          {ambito === "internacional" ? "Mundo" : departamento ? nombreDepto : "Colombia"}
-        </p>
-        <div
-          className="h-2.5 rounded-full"
-          style={{ background: `linear-gradient(90deg, ${RAMPA_MAPA.join(",")})` }}
-        />
-        <div className="cifra mt-1.5 flex justify-between text-xs text-secondary">
-          <span>1</span>
-          <span>{formatoNumero(maxEscala)}</span>
-        </div>
-        <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-          <span
-            className="size-3 rounded-[3px] border border-default"
-            style={{ background: RELLENO_VACIO }}
+      {/* Pausa del giro: todo lo que se mueve solo debe poder detenerse */}
+      {ambito === "internacional" && capasListas && (
+        <button
+          onClick={() => setGiroPausado((p) => !p)}
+          aria-pressed={!giroPausado}
+          title={giroPausado ? "Reanudar el giro del globo" : "Pausar el giro del globo"}
+          className="vidrio absolute right-[10px] bottom-[150px] z-10 grid size-[29px] place-items-center rounded-md text-secondary transition-colors hover:text-accent"
+        >
+          {giroPausado ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+          <span className="sr-only">Giro automático</span>
+        </button>
+      )}
+
+      {/* Franja inferior única: leyenda y pista comparten fila y no pueden pisarse */}
+      <div className="pointer-events-none absolute inset-x-3 bottom-4 flex items-end gap-3 pr-10 sm:inset-x-6 sm:bottom-6">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: introTerminada ? 1 : 0, y: introTerminada ? 0 : 12 }}
+          transition={{ duration: 0.6 }}
+          className="vidrio w-44 shrink-0 rounded-md p-3 sm:w-64 sm:p-3.5"
+        >
+          <p className="etiqueta mb-2 truncate">
+            {METRICAS[metrica].etiqueta} ·{" "}
+            {ambito === "internacional" ? "Mundo" : departamento ? nombreDepto : "Colombia"}
+          </p>
+          <div
+            className="h-2.5 rounded-full"
+            style={{ background: `linear-gradient(90deg, ${RAMPA_MAPA.join(",")})` }}
           />
-          {ambito === "internacional" ? "Sin datos internacionales" : "Sin registros"}
-        </div>
-      </motion.div>
+          <div className="cifra mt-1.5 flex justify-between text-xs text-secondary">
+            <span>{maxEscala ? 1 : "—"}</span>
+            <span>{maxEscala ? formatoNumero(maxEscala) : "sin registros"}</span>
+          </div>
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted">
+            <span
+              className="size-3 rounded-[3px] border border-default"
+              style={{ background: RELLENO_VACIO }}
+            />
+            {ambito === "internacional" ? "Sin datos internacionales" : "Sin registros"}
+          </div>
+        </motion.div>
+        {/* La pista aparece al aterrizar, no a un tiempo fijo */}
+        <motion.div
+          initial={false}
+          animate={{ opacity: introTerminada ? 1 : 0, y: introTerminada ? 0 : 10 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
+          className="flex min-w-0 flex-1 justify-center"
+        >
+          {props.pie}
+        </motion.div>
+      </div>
     </div>
   );
 }
 
 function Tooltip({
-  punto,
+  objetivo: punto,
+  x,
+  y,
   valores,
   metrica,
   departamento,
@@ -728,7 +993,9 @@ function Tooltip({
   paises,
   cifrasPaises,
 }: {
-  punto: Punto;
+  objetivo: Objetivo;
+  x: MotionValue<number>;
+  y: MotionValue<number>;
   valores: Record<Metrica, ValoresMapa>;
   metrica: Metrica;
   departamento: string | null;
@@ -747,47 +1014,58 @@ function Tooltip({
       ? municipios[punto.codigo]?.nombre
       : departamentos[punto.codigo]?.nombre;
   const nivel = esMunicipio ? "municipios" : "departamentos";
-  const izquierda = punto.x + 280 > punto.ancho ? punto.x - 256 : punto.x + 18;
-  const arriba = punto.y + 230 > punto.alto ? punto.y - 214 : punto.y + 18;
+  const sinDatos = cifras !== null && Object.values(cifras).every((n) => n === 0);
 
   return (
+    // Sin desenfoque de fondo: se mueve en cada cuadro sobre un lienzo WebGL y sería carísimo.
     <motion.div
-      initial={{ opacity: 0, scale: 0.96, left: izquierda, top: arriba }}
-      animate={{ opacity: 1, scale: 1, left: izquierda, top: arriba }}
+      style={{ x, y }}
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
-      transition={{ type: "spring", stiffness: 520, damping: 40, mass: 0.6 }}
-      className="vidrio pointer-events-none absolute z-20 w-60 rounded-md bg-surface-1/90! p-3.5 shadow-[var(--shadow-deep)]"
+      transition={{ duration: 0.16 }}
+      className="pointer-events-none absolute top-0 left-0 z-20 w-60 rounded-md border border-[var(--glass-border)] bg-surface-1/95 p-3.5 shadow-[var(--shadow-deep)]"
     >
       <p className="etiqueta mb-0.5">
         {esPais
-          ? (pais?.continente ?? "País")
+          ? continenteEs(pais?.continente ?? "País")
           : esMunicipio
             ? nombrePropio(departamentos[punto.dpto]?.nombre ?? "Municipio")
             : "Departamento"}
       </p>
       <p className="font-display text-[1rem] leading-tight font-extrabold">
-        {esPais ? (nombre ?? punto.codigo) : nombre ? nombrePropio(nombre) : `Código ${punto.codigo}`}
+        {esPais
+          ? (nombre ?? punto.codigo)
+          : nombre
+            ? nombrePropio(nombre)
+            : `Código ${punto.codigo}`}
       </p>
-      <dl className="mt-3 space-y-1.5">
-        {(Object.keys(METRICAS) as Metrica[]).map((m) => (
-          <div key={m} className="flex items-center justify-between text-sm">
-            <dt className={m === metrica ? "font-semibold text-primary" : "text-secondary"}>
-              {m === metrica && (
-                <span className="mr-1.5 inline-block size-1.5 -translate-y-px rounded-full bg-gold-500" />
-              )}
-              {METRICAS[m].etiqueta}
-            </dt>
-            <dd className={`cifra ${m === metrica ? "text-accent" : "text-secondary"}`}>
-              {formatoNumero(cifras ? cifras[m] : (valores[m][nivel].get(punto.codigo) ?? 0))}
-            </dd>
-          </div>
-        ))}
-      </dl>
-      {esPais ? (
+      {sinDatos ? (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+          <Globe className="size-3.5" /> Sin registros internacionales
+        </p>
+      ) : (
+        <dl className="mt-3 space-y-1.5">
+          {(Object.keys(METRICAS) as Metrica[]).map((m) => (
+            <div key={m} className="flex items-center justify-between text-sm">
+              <dt className={m === metrica ? "font-semibold text-primary" : "text-secondary"}>
+                {m === metrica && (
+                  <span className="mr-1.5 inline-block size-1.5 -translate-y-px rounded-full bg-gold-500" />
+                )}
+                {METRICAS[m].etiqueta}
+              </dt>
+              <dd className={`cifra ${m === metrica ? "text-accent" : "text-secondary"}`}>
+                {formatoNumero(cifras ? cifras[m] : (valores[m][nivel].get(punto.codigo) ?? 0))}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {esPais && sinDatos ? null : esPais ? (
         <p className="mt-3 flex items-center gap-1.5 border-t border-subtle pt-2.5 text-xs text-muted">
           {punto.codigo === COLOMBIA_ISO ? (
             <>
-              <MousePointerClick className="size-3.5" /> Doble clic para volver al detalle nacional
+              <MousePointerClick className="size-3.5" /> Clic para ver el detalle nacional
             </>
           ) : (
             <>

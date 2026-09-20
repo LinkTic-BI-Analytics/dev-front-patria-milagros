@@ -20,8 +20,10 @@ import {
 } from "@/lib/datos/catalogos";
 import type { Resumen } from "@/lib/datos/agregar";
 import type { EstadoAtencion } from "@/lib/datos/tipos";
+import { EASE } from "@/lib/ui/movimiento";
+import { EstadoVacio } from "./EstadoVacio";
 
-const suave = [0.22, 1, 0.36, 1] as const;
+const suave = EASE.salida;
 
 export function Seccion({
   titulo,
@@ -105,8 +107,8 @@ export function GraficaTemas({
         <li className="flex flex-wrap justify-between gap-x-3 gap-y-1 px-1.5 pt-2 text-xs text-muted">
           {resto.length > 0 && (
             <span>
-              y {resto.length} temas más ·{" "}
-              {formatoNumero(resto.reduce((a, t) => a + t.total, 0))} aportes
+              y {resto.length} temas más · {formatoNumero(resto.reduce((a, t) => a + t.total, 0))}{" "}
+              aportes
             </span>
           )}
           {sinClasificar > 0 && (
@@ -196,17 +198,37 @@ const ORDEN_ATENCION: EstadoAtencion[] = [
 export function EstadoAtencionBarra({ atencion }: { atencion: Resumen["atencion"] }) {
   const total = ORDEN_ATENCION.reduce((a, e) => a + atencion[e], 0);
   if (!total) return <Vacio texto="Sin necesidades en este territorio" />;
+  const pendientes = atencion.sin_respuesta_registrada;
+  const fondo = (e: (typeof ORDEN_ATENCION)[number]) =>
+    e === "sin_respuesta_registrada"
+      ? {
+          background:
+            "repeating-linear-gradient(135deg, rgba(169,203,245,.34) 0 3px, rgba(30,58,107,.9) 3px 7px)",
+          boxShadow: "inset 0 0 0 1px rgba(169,203,245,.45)",
+        }
+      : { background: ESTADOS_ATENCION[e].color };
 
   return (
     <div>
-      <div className="flex h-3 gap-[2px]">
+      <p className="mb-2.5 text-sm text-secondary">
+        <span className="cifra-display text-xl font-extrabold text-primary">
+          {((atencion.respondido * 100) / total).toFixed(1).replace(".", ",")} %
+        </span>{" "}
+        con respuesta ·{" "}
+        <span className="cifra text-primary">{formatoNumero(atencion.respondido)}</span> de{" "}
+        <span className="cifra text-primary">{formatoNumero(total)}</span>
+        <span className="mt-0.5 block text-xs text-muted">
+          {formatoNumero(pendientes)} aún sin respuesta registrada
+        </span>
+      </p>
+      <div className="flex h-3.5 gap-[2px]">
         {ORDEN_ATENCION.map((e) =>
           atencion[e] ? (
             <motion.div
               key={e}
               title={`${ESTADOS_ATENCION[e].etiqueta}: ${atencion[e]}`}
               className="h-full basis-0 first:rounded-l-[4px] last:rounded-r-[4px]"
-              style={{ background: ESTADOS_ATENCION[e].color }}
+              style={fondo(e)}
               initial={{ flexGrow: 0 }}
               animate={{ flexGrow: atencion[e] }}
               transition={{ duration: 0.9, ease: suave }}
@@ -218,10 +240,7 @@ export function EstadoAtencionBarra({ atencion }: { atencion: Resumen["atencion"
         {ORDEN_ATENCION.map((e) => (
           <li key={e} className="flex items-center justify-between gap-2 text-xs">
             <span className="flex min-w-0 items-center gap-2 text-secondary">
-              <span
-                className="size-2.5 shrink-0 rounded-[3px]"
-                style={{ background: ESTADOS_ATENCION[e].color }}
-              />
+              <span className="size-2.5 shrink-0 rounded-[3px]" style={fondo(e)} />
               <span className="truncate">{ESTADOS_ATENCION[e].etiqueta}</span>
             </span>
             <span className="cifra text-primary">
@@ -231,6 +250,7 @@ export function EstadoAtencionBarra({ atencion }: { atencion: Resumen["atencion"
           </li>
         ))}
       </ul>
+      <p className="mt-2.5 text-[11px] text-muted">Según la última actuación registrada.</p>
     </div>
   );
 }
@@ -290,6 +310,11 @@ export function Ranking({
 }
 
 function Vacio({ texto = "Sin registros con los filtros actuales" }: { texto?: string }) {
-  return <p className="py-6 text-center text-xs text-muted">{texto}</p>;
+  return (
+    <EstadoVacio
+      compacto
+      titulo={texto}
+      detalle="Pruebe con otro territorio o quite algún filtro."
+    />
+  );
 }
-

@@ -31,5 +31,4 @@ export const colorPorT = exp([
   ],
 ]);
 
-export const reducirMovimiento = () =>
-  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+export { reducirMovimiento } from "@/lib/ui/movimiento";

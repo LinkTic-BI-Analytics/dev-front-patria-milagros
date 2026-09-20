@@ -99,10 +99,11 @@ export const CANALES: Record<Canal, { etiqueta: string; icono: LucideIcon; color
 
 // Es una progresión (ordinal): una sola familia azul, de tenue a brillante.
 export const ESTADOS_ATENCION: Record<EstadoAtencion, { etiqueta: string; color: string }> = {
+  // El pendiente va rayado y con borde: el navy liso casi no se distinguía del fondo (1,5:1).
   sin_respuesta_registrada: { etiqueta: "Sin respuesta registrada", color: "#1E3A6B" },
-  recibido: { etiqueta: "Recibido", color: "#2F66B8" },
-  remitido: { etiqueta: "Remitido", color: "#5B93E0" },
-  respondido: { etiqueta: "Respondido", color: "#A9CBF5" },
+  recibido: { etiqueta: "Recibido", color: "#3D74C9" },
+  remitido: { etiqueta: "Remitido", color: "#6FA3EA" },
+  respondido: { etiqueta: "Respondido", color: "#CFE2FB" },
 };
 
 /** Escala secuencial del mapa: un solo tono dorado, de tenue (poco) a brillante (mucho). */

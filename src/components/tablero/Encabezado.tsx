@@ -1,9 +1,29 @@
 "use client";
 
 import Image from "next/image";
+import { useSyncExternalStore } from "react";
 import { motion } from "motion/react";
 import { LogOut, Orbit, RefreshCw } from "lucide-react";
 import { salir } from "@/app/acceso/acciones";
+import { EASE } from "@/lib/ui/movimiento";
+
+// Reloj de medio minuto para el «hace X min». En el servidor no hay «ahora»: se muestra la hora
+// del corte y el tiempo relativo aparece al hidratar, sin desajuste.
+const PASO_RELOJ_MS = 30_000;
+const suscribirReloj = (avisar: () => void) => {
+  const reloj = setInterval(avisar, PASO_RELOJ_MS);
+  return () => clearInterval(reloj);
+};
+const leerReloj = () => Math.floor(Date.now() / PASO_RELOJ_MS);
+const sinReloj = () => null;
+
+function haceCuanto(desde: string, tic: number) {
+  const minutos = Math.max(0, Math.round((tic * PASO_RELOJ_MS - new Date(desde).getTime()) / 60_000));
+  if (minutos < 1) return "hace un momento";
+  if (minutos < 60) return `hace ${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  return `hace ${horas} h`;
+}
 
 export function Encabezado({
   proceso,
@@ -11,13 +31,23 @@ export function Encabezado({
   hayPnd,
   ejesFiltrados,
   onEjes,
+  onPrecargarEjes,
+  actualizando,
+  falloActualizar,
+  onActualizar,
 }: {
   proceso: string;
   actualizadoEn: string;
   hayPnd: boolean;
   ejesFiltrados: number;
   onEjes: () => void;
+  /** Se llama al acercarse al botón, para que el modal abra sin espera. */
+  onPrecargarEjes?: () => void;
+  actualizando: boolean;
+  falloActualizar: boolean;
+  onActualizar: () => void;
 }) {
+  const tic = useSyncExternalStore(suscribirReloj, leerReloj, sinReloj);
   const hora = new Intl.DateTimeFormat("es-CO", {
     timeZone: "America/Bogota",
     hour: "2-digit",
@@ -30,7 +60,7 @@ export function Encabezado({
     <motion.header
       initial={{ opacity: 0, y: -16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.7, ease: EASE.salida }}
       className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-subtle bg-base/70 px-4 backdrop-blur-md sm:px-6"
     >
       <Image
@@ -38,7 +68,7 @@ export function Encabezado({
         alt="Escudo de Colombia"
         width={34}
         height={36}
-        priority
+        preload
       />
       <div className="min-w-0">
         <div className="tricolor mb-1">
@@ -55,6 +85,8 @@ export function Encabezado({
         {hayPnd && (
           <button
             onClick={onEjes}
+            onPointerEnter={onPrecargarEjes}
+            onFocus={onPrecargarEjes}
             className="group relative inline-flex h-9 items-center gap-2 overflow-hidden rounded-sm border border-gold-600/60 bg-[rgba(255,200,0,.08)] px-3 text-xs font-bold tracking-[0.06em] text-accent uppercase transition-colors hover:bg-[rgba(255,200,0,.16)]"
           >
             <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
@@ -78,9 +110,27 @@ export function Encabezado({
           </span>
           Datos en vivo
         </span>
-        <span className="hidden items-center gap-1.5 text-xs text-muted lg:inline-flex">
-          <RefreshCw className="size-3.5" /> Corte {hora}
-        </span>
+        {/* «En vivo» de verdad: cuándo se leyó la base y cómo volver a leerla, sin recargar ni
+            perder filtros. No hay refresco automático. */}
+        <button
+          onClick={onActualizar}
+          disabled={actualizando}
+          title={`Corte ${hora} · clic para actualizar los datos`}
+          className={`hidden h-9 items-center gap-1.5 rounded-sm px-2 text-xs transition-colors hover:bg-white/5 hover:text-primary disabled:cursor-progress md:inline-flex ${
+            falloActualizar ? "text-warning" : "text-muted"
+          }`}
+        >
+          <RefreshCw className={`size-3.5 ${actualizando ? "animate-spin" : ""}`} />
+          <span aria-live="polite" className="hidden lg:inline">
+            {actualizando
+              ? "Actualizando…"
+              : falloActualizar
+                ? "No se pudo actualizar · reintentar"
+                : tic === null
+                  ? `Corte ${hora}`
+                  : `Actualizado ${haceCuanto(actualizadoEn, tic)}`}
+          </span>
+        </button>
         <form action={salir}>
           <button
             type="submit"

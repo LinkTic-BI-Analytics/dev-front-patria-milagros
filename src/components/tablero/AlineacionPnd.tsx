@@ -4,8 +4,9 @@ import { motion } from "motion/react";
 import { ArrowDownRight, Compass, Lock, Quote, SearchX } from "lucide-react";
 import { formatoNumero } from "@/lib/datos/catalogos";
 import type { AlineacionPnd as Alineacion } from "@/lib/datos/narrativas";
+import { EASE } from "@/lib/ui/movimiento";
 
-const suave = [0.22, 1, 0.36, 1] as const;
+const suave = EASE.salida;
 export const SIN_RELACION = "sin_relacion";
 
 /**
@@ -16,18 +17,19 @@ export function AlineacionPnd({
   alineacion,
   fuente,
   nombreTerritorio,
-  ejeActivo,
+  activos,
   onEje,
 }: {
   alineacion: Alineacion;
   fuente: string;
   nombreTerritorio: string;
-  ejeActivo: string | null;
-  onEje: (eje: string | null) => void;
+  /** Ejes filtrados en el tablero; puede incluir `SIN_RELACION`. */
+  activos: string[];
+  onEje: (eje: string) => void;
 }) {
   const { total, relacionadas, ejes, lineas, sinRelacion } = alineacion;
   const maxEje = Math.max(1, ...ejes.map((e) => e.total));
-  const alternar = (id: string) => onEje(ejeActivo === id ? null : id);
+  const alternar = onEje;
 
   return (
     <div className="relative mt-6 overflow-hidden rounded-md border border-subtle bg-[linear-gradient(160deg,rgba(0,49,137,.22),rgba(10,26,58,.15)_60%)] p-4 sm:p-5">
@@ -58,10 +60,10 @@ export function AlineacionPnd({
       <div className="relative mt-4 grid gap-4 lg:grid-cols-[1fr_1.25fr]">
         {/* Ejes */}
         <div>
-          <p className="etiqueta mb-2">Narrativas por eje · clic para filtrar la tabla</p>
+          <p className="etiqueta mb-2">Narrativas por eje · clic para filtrar el tablero</p>
           <ul className="space-y-1">
             {ejes.map((e, i) => {
-              const activo = ejeActivo === e.id;
+              const activo = activos.includes(e.id);
               return (
                 <li key={e.id}>
                   <button
@@ -105,9 +107,9 @@ export function AlineacionPnd({
           <button
             onClick={() => alternar(SIN_RELACION)}
             disabled={sinRelacion.total === 0}
-            aria-pressed={ejeActivo === SIN_RELACION}
+            aria-pressed={activos.includes(SIN_RELACION)}
             className={`mt-3 w-full rounded-sm border border-dashed p-3 text-left transition-colors disabled:cursor-default disabled:opacity-60 ${
-              ejeActivo === SIN_RELACION
+              activos.includes(SIN_RELACION)
                 ? "border-gold-500 bg-[rgba(255,200,0,.08)]"
                 : "border-default hover:bg-white/5"
             }`}
