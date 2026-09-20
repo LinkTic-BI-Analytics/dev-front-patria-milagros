@@ -40,9 +40,14 @@ type Props = {
 
 type Objetivo = { fuente: "departamentos" | "municipios" | "paises"; codigo: string; dpto: string };
 
-/** ¿Se puede pintar? El estilo y las capas propias tienen que existir ya. */
+/**
+ * ¿Se puede pintar? Basta con que estén nuestras capas: si el mapa se rehízo (React puede
+ * volver a correr los efectos), todavía no existen y hay que esperar a que vuelva a cargar.
+ * No se usa `isStyleLoaded()`: justo después de agregar las capas devuelve falso y el efecto
+ * se saltaría para siempre, dejando el mapa sin colores.
+ */
 const mapaListo = (map: mapboxgl.Map | null): map is mapboxgl.Map =>
-  Boolean(map && map.isStyleLoaded() && map.getLayer("dep-relleno") && map.getLayer("pais-relleno"));
+  Boolean(map && map.getLayer("dep-relleno") && map.getLayer("pais-relleno"));
 type Punto = Objetivo & { x: number; y: number; ancho: number; alto: number };
 type FC = FeatureCollection<Geometry, { codigo: string; dpto?: string }>;
 
@@ -283,6 +288,7 @@ export default function MapaColombia(props: Props) {
     // React puede volver a montar los efectos (modo estricto, Suspense): un solo mapa por contenedor.
     if (!contenedor.current || mapaRef.current) return;
     let cancelado = false;
+    const limpiezas: (() => void)[] = [];
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
     const map = new mapboxgl.Map({
@@ -327,17 +333,19 @@ export default function MapaColombia(props: Props) {
       setPaises(new Map(mundo.features.map((f) => [f.properties.codigo, f.properties])));
       setCapasListas(true);
 
-      const aterrizar = () => {
-        map.fitBounds(COLOMBIA, {
-          padding: relleno(map.getContainer().getBoundingClientRect()),
-          duration: reducirMovimiento() ? 0 : 2800,
-          curve: 1.5,
-          essential: true,
-        });
-        map.once("moveend", () => !cancelado && setIntroTerminada(true));
-      };
-      if (map.isMoving()) map.once("moveend", aterrizar);
-      else aterrizar();
+      // Del globo a Colombia. Se vuela directo: encadenar el "moveend" del giro de entrada
+      // dejaba el mapa esperando un evento que, según la carga, podía no llegar.
+      map.fitBounds(COLOMBIA, {
+        padding: relleno(map.getContainer().getBoundingClientRect()),
+        duration: reducirMovimiento() ? 0 : 2600,
+        curve: 1.5,
+        essential: true,
+      });
+      const aterrizado = setTimeout(
+        () => !cancelado && setIntroTerminada(true),
+        reducirMovimiento() ? 0 : 2700,
+      );
+      limpiezas.push(() => clearTimeout(aterrizado));
     });
 
     // Qué hay bajo el cursor, en orden de prioridad.
@@ -430,6 +438,7 @@ export default function MapaColombia(props: Props) {
 
     return () => {
       cancelado = true;
+      for (const limpiar of limpiezas) limpiar();
       observador.disconnect();
       giroRef.current?.destruir();
       giroRef.current = null;
