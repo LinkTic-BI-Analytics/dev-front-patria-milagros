@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
+  Clock,
   KeyRound,
   LoaderCircle,
   ShieldCheck,
@@ -18,7 +19,15 @@ import { EASE } from "@/lib/ui/movimiento";
 const inicial: EstadoAcceso = { error: null, intento: 0 };
 const suave = EASE.salida;
 
-export function FormularioAcceso() {
+export function FormularioAcceso({
+  vencida = false,
+  volver = "/",
+}: {
+  /** Llegó aquí porque su sesión caducó, no porque nunca hubiera entrado. */
+  vencida?: boolean;
+  /** A dónde iba: se vuelve allí tras entrar. */
+  volver?: string;
+}) {
   const [estado, accion, enviando] = useActionState(ingresar, inicial);
   const [visible, setVisible] = useState(false);
   const [mayusculas, setMayusculas] = useState(false);
@@ -149,7 +158,18 @@ export function FormularioAcceso() {
             </div>
           </div>
 
+          {vencida && (
+            <p
+              role="status"
+              className="mb-5 flex items-start gap-2 rounded-sm bg-warning-bg px-3 py-2 text-sm text-warning"
+            >
+              <Clock className="mt-0.5 size-4 shrink-0" />
+              Su sesión caducó por seguridad. Ingrese de nuevo para continuar donde estaba.
+            </p>
+          )}
+
           <form action={accion} className="space-y-5">
+            <input type="hidden" name="volver" value={volver} />
             <label htmlFor="token" className="etiqueta block">
               Token de acceso
             </label>

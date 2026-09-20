@@ -6,7 +6,7 @@
 
 import { enTerritorio, type Filtrados } from "./agregar";
 import { SIN_TEMA } from "./catalogos";
-import type { AporteResumen, DatosTablero, NarrativaResumen, PndResumen } from "./tipos";
+import type { AporteResumen, Canal, DatosTablero, NarrativaResumen, PndResumen } from "./tipos";
 
 export type FilaNarrativa = NarrativaResumen & { aporte: AporteResumen; cuerpo: string };
 
@@ -15,14 +15,33 @@ export type GrupoNarrativo = {
   cuerpo: string;
   veces: number;
   temas: string[];
+  /** Municipios del territorio donde se cuenta, del que más lo repite al que menos. */
   municipios: string[];
+  /** Lo mismo con su cuenta, para «Sobre todo en El Tarra (9)». */
+  conteoMunicipios: [string, number][];
+  departamentos: string[];
+  canales: Canal[];
   ultima: string;
+  primera: string;
   confirmadas: number;
+  /** Las narrativas que lo componen: las necesita la fila desplegada. */
+  filas: FilaNarrativa[];
+  /** Palabras del relato que lo conectaron con el Plan. */
+  claves: string[];
   /** Línea del PND más frecuente entre sus narrativas (`null` si ninguna se relaciona). */
   pnd: string | null;
 };
 
-export type Termino = { termino: string; veces: number; peso: number };
+export type Termino = {
+  termino: string;
+  /** Narrativas que lo mencionan. */
+  veces: number;
+  /** Relatos distintos que lo mencionan: es lo que mide de verdad si atraviesa el territorio. */
+  relatos: number;
+  /** Cuántas veces más frecuente es aquí que en el país. */
+  razon: number;
+  peso: number;
+};
 
 export type Generalidad = {
   total: number;
@@ -33,6 +52,11 @@ export type Generalidad = {
   temas: { tema: string; total: number; porcentaje: number }[];
   recurrentes: GrupoNarrativo[];
   terminos: Termino[];
+  /**
+   * Tema en el que el territorio se sale de la media nacional. `null` cuando no hay base
+   * suficiente: sin eso, «aquí se habla más de salud» sería ruido con 7 narrativas.
+   */
+  distintivo: { tema: string; porcentaje: number; razon: number } | null;
 };
 
 const SUFIJO_CORRECCION = /\s*\(corregido por quien lo contó\)\s*$/i;
@@ -78,20 +102,34 @@ export function agruparNarrativas(filas: FilaNarrativa[], codigo: string | null)
       filas: FilaNarrativa[];
       temas: Map<string, number>;
       municipios: Map<string, number>;
+      canales: Map<Canal, number>;
       lineas: Map<string, number>;
+      claves: Map<string, number>;
     }
   >();
   for (const f of filas) {
     const clave = normalizar(f.cuerpo).replace(/[^\p{L}\p{N} ]/gu, "").trim();
     let g = grupos.get(clave);
     if (!g) {
-      g = { cuerpo: f.cuerpo, filas: [], temas: new Map(), municipios: new Map(), lineas: new Map() };
+      g = {
+        cuerpo: f.cuerpo,
+        filas: [],
+        temas: new Map(),
+        municipios: new Map(),
+        canales: new Map(),
+        lineas: new Map(),
+        claves: new Map(),
+      };
       grupos.set(clave, g);
     }
     g.filas.push(f);
     const tema = f.aporte.tema ?? SIN_TEMA;
     g.temas.set(tema, (g.temas.get(tema) ?? 0) + 1);
-    if (f.pnd) g.lineas.set(f.pnd.linea, (g.lineas.get(f.pnd.linea) ?? 0) + 1);
+    g.canales.set(f.aporte.canal, (g.canales.get(f.aporte.canal) ?? 0) + 1);
+    if (f.pnd) {
+      g.lineas.set(f.pnd.linea, (g.lineas.get(f.pnd.linea) ?? 0) + 1);
+      for (const c of f.pnd.claves) g.claves.set(c, (g.claves.get(c) ?? 0) + 1);
+    }
     for (const m of f.aporte.municipios)
       if (codigo === null || m.startsWith(codigo)) g.municipios.set(m, (g.municipios.get(m) ?? 0) + 1);
   }
@@ -102,8 +140,14 @@ export function agruparNarrativas(filas: FilaNarrativa[], codigo: string | null)
       veces: g.filas.length,
       temas: porFrecuencia(g.temas),
       municipios: porFrecuencia(g.municipios),
+      conteoMunicipios: [...g.municipios.entries()].sort((a, b) => b[1] - a[1]),
+      departamentos: [...new Set([...g.municipios.keys()].map((m) => m.slice(0, 2)))],
+      canales: porFrecuencia(g.canales) as Canal[],
       ultima: g.filas.reduce((u, f) => (f.aporte.fecha > u ? f.aporte.fecha : u), ""),
+      primera: g.filas.reduce((u, f) => (!u || f.aporte.fecha < u ? f.aporte.fecha : u), ""),
       confirmadas: g.filas.filter((f) => f.confirmada).length,
+      filas: g.filas,
+      claves: porFrecuencia(g.claves),
       pnd: porFrecuencia(g.lineas)[0] ?? null,
     }))
     .sort((a, b) => b.veces - a.veces || b.ultima.localeCompare(a.ultima));
@@ -120,7 +164,8 @@ const VACIAS = new Set(
     "ya asi dia dias vez veces bien mal tan tanto sigue siguen puede pueden queda quedo llega " +
     "llegan lleva van hacer dos tres cual cuales mientras aunque despues antes luego ademas " +
     "ninguna ninguno ningun hubo habia haber sea sean fueron estaba estaban dice dicen pasa " +
-    "pasan pone ponen gente vamos"
+    "pasan pone ponen gente vamos ano anos usted ustedes nosotros tener decir dijo dicho " +
+    "gracias favor senor senora buenas buenos hola parte manera forma cosa cosas hacia segun"
   ).split(" "),
 );
 // Solo "de"/"del" arman pares con sentido ("puesto de salud", "capital del departamento").
@@ -207,6 +252,8 @@ export function terminosClave(
         clave,
         termino: c.forma,
         veces: c.narrativas,
+        relatos: c.relatos,
+        razon: lift,
         // Desempate por narrativas: entre dos términos igual de transversales, el más dicho.
         peso: c.relatos * Math.log2(1 + lift) * (esPar ? 1.35 : 1) + c.narrativas / 1e4,
       };
@@ -222,7 +269,13 @@ export function terminosClave(
     if (elegidos.length === maximo) break;
   }
   const max = elegidos[0]?.peso ?? 1;
-  return elegidos.map(({ termino, veces, peso }) => ({ termino, veces, peso: peso / max }));
+  return elegidos.map(({ termino, veces, relatos, razon, peso }) => ({
+    termino,
+    veces,
+    relatos,
+    razon,
+    peso: peso / max,
+  }));
 }
 
 export function generalidad(
@@ -236,6 +289,28 @@ export function generalidad(
     const t = f.aporte.tema ?? SIN_TEMA;
     temas.set(t, (temas.get(t) ?? 0) + 1);
   }
+  const conTema = Math.max(filas.length - (temas.get(SIN_TEMA) ?? 0), 1);
+
+  // Lo que distingue al territorio del país. Con poca base no se dice nada: un tema que aparece
+  // 2 de 7 veces no es una característica, es azar.
+  let distintivo: Generalidad["distintivo"] = null;
+  if (codigo && filas.length >= 20) {
+    const pais = new Map<string, number>();
+    for (const f of referencia) {
+      const t = f.aporte.tema ?? SIN_TEMA;
+      pais.set(t, (pais.get(t) ?? 0) + 1);
+    }
+    const paisConTema = Math.max(referencia.length - (pais.get(SIN_TEMA) ?? 0), 1);
+    for (const [tema, n] of temas) {
+      if (tema === SIN_TEMA || n < 5) continue;
+      const aqui = n / conTema;
+      const alla = (pais.get(tema) ?? 0) / paisConTema;
+      const razon = alla > 0 ? aqui / alla : 0;
+      if (razon >= 1.3 && (!distintivo || razon > distintivo.razon))
+        distintivo = { tema, porcentaje: aqui * 100, razon };
+    }
+  }
+
   return {
     total: filas.length,
     distintas: grupos.length,
@@ -245,13 +320,10 @@ export function generalidad(
       .filter(([t]) => t !== SIN_TEMA)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
-      .map(([tema, total]) => ({
-        tema,
-        total,
-        porcentaje: (total * 100) / Math.max(filas.length - (temas.get(SIN_TEMA) ?? 0), 1),
-      })),
+      .map(([tema, total]) => ({ tema, total, porcentaje: (total * 100) / conTema })),
     recurrentes: grupos.slice(0, 3),
     terminos: terminosClave(filas, referencia),
+    distintivo,
   };
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "motion/react";
 import { ArrowUpRight } from "lucide-react";
 import {
@@ -14,13 +15,12 @@ import {
 import {
   ESTADOS_ATENCION,
   SIN_TEMA,
-  etiquetaMes,
   formatoNumero,
   temaDe,
 } from "@/lib/datos/catalogos";
 import type { Resumen } from "@/lib/datos/agregar";
 import type { EstadoAtencion } from "@/lib/datos/tipos";
-import { EASE } from "@/lib/ui/movimiento";
+import { EASE, reducirMovimiento } from "@/lib/ui/movimiento";
 import { EstadoVacio } from "./EstadoVacio";
 
 const suave = EASE.salida;
@@ -126,63 +126,121 @@ export function GraficaTemas({
   );
 }
 
-export function GraficaEvolucion({ meses }: { meses: Resumen["meses"] }) {
-  const datos = meses.map((m) => ({ ...m, etiqueta: etiquetaMes(m.mes) }));
-  if (!datos.some((d) => d.aportes > 0)) return <Vacio />;
+/**
+ * Participación en el tiempo. La serie llega ya decidida (semanal o mensual) desde `resumir`.
+ *
+ * El último periodo va en curso: se dibuja punteado y rotulado, porque leído como un punto más
+ * parece un desplome cuando en realidad la semana no ha terminado.
+ */
+export function GraficaEvolucion({ evolucion }: { evolucion: Resumen["evolucion"] }) {
+  if (!evolucion.some((d) => d.aportes > 0)) return <Vacio />;
+
+  const n = evolucion.length;
+  const corte = evolucion[n - 1]?.parcial ? n - 2 : n - 1;
+  // Con un solo periodo cerrado no hay línea que dibujar: se muestran los puntos.
+  const puntea = corte >= 1;
+  const datos = evolucion.map((d, i) => ({
+    ...d,
+    cerrado: !puntea || i <= corte ? d.aportes : null,
+    enCurso: puntea && i >= corte ? d.aportes : null,
+  }));
+  const pico = evolucion.reduce((m, d) => (!d.parcial && d.aportes > m.aportes ? d : m), {
+    ...evolucion[0],
+    aportes: -1,
+  });
+  const semanal = evolucion[0]?.clave.length === 10;
 
   return (
-    <div className="h-40">
-      <ResponsiveContainer width="100%" height="100%" debounce={40}>
-        <AreaChart data={datos} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
-          <defs>
-            <linearGradient id="relleno-evolucion" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#FFC800" stopOpacity={0.32} />
-              <stop offset="100%" stopColor="#FFC800" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-          <XAxis
-            dataKey="etiqueta"
-            tickLine={false}
-            axisLine={false}
-            tick={{ fill: "var(--chart-axis-text)", fontSize: 11 }}
-            dy={6}
-          />
-          <YAxis
-            allowDecimals={false}
-            tickLine={false}
-            axisLine={false}
-            tick={{ fill: "var(--chart-axis-text)", fontSize: 11 }}
-            width={42}
-          />
-          <Tooltip
-            cursor={{ stroke: "rgba(255,200,0,.45)", strokeWidth: 1, strokeDasharray: "3 3" }}
-            content={({ active, payload }) =>
-              active && payload?.length ? (
-                <div className="rounded-md border border-default bg-surface-3 px-3 py-2 shadow-[var(--shadow-card)]">
-                  <p className="etiqueta">{payload[0].payload.etiqueta}</p>
-                  <p className="text-sm">
-                    <span className="cifra font-bold text-primary">
-                      {formatoNumero(Number(payload[0].value))}
-                    </span>{" "}
-                    <span className="text-secondary">aportes</span>
-                  </p>
-                </div>
-              ) : null
-            }
-          />
-          <Area
-            type="monotone"
-            dataKey="aportes"
-            stroke="#FFC800"
-            strokeWidth={2}
-            fill="url(#relleno-evolucion)"
-            activeDot={{ r: 5, fill: "#FFC800", stroke: "#0A1A3A", strokeWidth: 2 }}
-            dot={false}
-            animationDuration={1100}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+    <div>
+      {pico.aportes > 0 && (
+        <p className="mb-2 text-xs text-secondary">
+          Pico: {semanal ? "semana del " : ""}
+          <span className="text-primary">{pico.etiqueta}</span> ·{" "}
+          <span className="cifra text-primary">{formatoNumero(pico.aportes)}</span> aportes
+        </p>
+      )}
+      <div className="h-40">
+        <ResponsiveContainer width="100%" height="100%" debounce={40}>
+          <AreaChart data={datos} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+            <defs>
+              <linearGradient id="relleno-evolucion" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#FFC800" stopOpacity={0.18} />
+                <stop offset="100%" stopColor="#FFC800" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
+            <XAxis
+              dataKey="etiqueta"
+              tickLine={false}
+              axisLine={false}
+              tick={{ fill: "var(--chart-axis-text)", fontSize: 11 }}
+              interval="preserveStartEnd"
+              minTickGap={18}
+              dy={6}
+            />
+            <YAxis
+              allowDecimals={false}
+              tickLine={false}
+              axisLine={false}
+              tick={{ fill: "var(--chart-axis-text)", fontSize: 11 }}
+              width={42}
+            />
+            <Tooltip
+              cursor={{ stroke: "rgba(255,200,0,.45)", strokeWidth: 1, strokeDasharray: "3 3" }}
+              content={({ active, payload }) => {
+                const punto = payload?.[0]?.payload as Resumen["evolucion"][number] | undefined;
+                return active && punto ? (
+                  <div className="rounded-md border border-default bg-surface-3 px-3 py-2 shadow-[var(--shadow-card)]">
+                    <p className="etiqueta">
+                      {semanal ? "Semana del " : ""}
+                      {punto.etiqueta}
+                    </p>
+                    <p className="text-sm">
+                      <span className="cifra font-bold text-primary">
+                        {formatoNumero(punto.aportes)}
+                      </span>{" "}
+                      <span className="text-secondary">aportes</span>
+                    </p>
+                    {punto.parcial && <p className="text-[11px] text-accent">Periodo en curso</p>}
+                  </div>
+                ) : null;
+              }}
+            />
+            <Area
+              type="monotone"
+              dataKey="cerrado"
+              stroke="#FFC800"
+              strokeWidth={2}
+              fill="url(#relleno-evolucion)"
+              activeDot={{ r: 5, fill: "#FFC800", stroke: "#0A1A3A", strokeWidth: 2 }}
+              dot={puntea ? false : { r: 3, fill: "#FFC800", stroke: "#0A1A3A", strokeWidth: 2 }}
+              connectNulls={false}
+              isAnimationActive={!reducirMovimiento()}
+              animationDuration={1100}
+            />
+            {puntea && (
+              <Area
+                type="monotone"
+                dataKey="enCurso"
+                stroke="#FFC800"
+                strokeWidth={2}
+                strokeDasharray="4 4"
+                fill="none"
+                activeDot={{ r: 5, fill: "#FFC800", stroke: "#0A1A3A", strokeWidth: 2 }}
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      {puntea && (
+        <p className="mt-1 flex items-center justify-end gap-1.5 text-[11px] text-muted">
+          <span className="inline-block h-px w-5 border-t-2 border-dashed border-gold-500" />
+          {semanal ? "Semana" : "Mes"} en curso
+        </p>
+      )}
     </div>
   );
 }
@@ -196,6 +254,7 @@ const ORDEN_ATENCION: EstadoAtencion[] = [
 
 /** Barra apilada ordinal: una familia azul con separadores de 2px y leyenda con cifras. */
 export function EstadoAtencionBarra({ atencion }: { atencion: Resumen["atencion"] }) {
+  const [señalado, setSenalado] = useState<EstadoAtencion | null>(null);
   const total = ORDEN_ATENCION.reduce((a, e) => a + atencion[e], 0);
   if (!total) return <Vacio texto="Sin necesidades en este territorio" />;
   const pendientes = atencion.sin_respuesta_registrada;
@@ -226,8 +285,12 @@ export function EstadoAtencionBarra({ atencion }: { atencion: Resumen["atencion"
           atencion[e] ? (
             <motion.div
               key={e}
-              title={`${ESTADOS_ATENCION[e].etiqueta}: ${atencion[e]}`}
-              className="h-full basis-0 first:rounded-l-[4px] last:rounded-r-[4px]"
+              title={`${ESTADOS_ATENCION[e].etiqueta}: ${formatoNumero(atencion[e])}`}
+              onPointerEnter={() => setSenalado(e)}
+              onPointerLeave={() => setSenalado(null)}
+              className={`h-full basis-0 transition-opacity first:rounded-l-[4px] last:rounded-r-[4px] ${
+                señalado && señalado !== e ? "opacity-35" : ""
+              }`}
               style={fondo(e)}
               initial={{ flexGrow: 0 }}
               animate={{ flexGrow: atencion[e] }}
@@ -238,7 +301,14 @@ export function EstadoAtencionBarra({ atencion }: { atencion: Resumen["atencion"
       </div>
       <ul className="mt-3 grid grid-flow-col grid-cols-2 grid-rows-2 gap-x-4 gap-y-2">
         {ORDEN_ATENCION.map((e) => (
-          <li key={e} className="flex items-center justify-between gap-2 text-xs">
+          <li
+            key={e}
+            onPointerEnter={() => setSenalado(e)}
+            onPointerLeave={() => setSenalado(null)}
+            className={`flex items-center justify-between gap-2 text-xs transition-opacity ${
+              señalado && señalado !== e ? "opacity-35" : ""
+            }`}
+          >
             <span className="flex min-w-0 items-center gap-2 text-secondary">
               <span className="size-2.5 shrink-0 rounded-[3px]" style={fondo(e)} />
               <span className="truncate">{ESTADOS_ATENCION[e].etiqueta}</span>
@@ -258,10 +328,13 @@ export function EstadoAtencionBarra({ atencion }: { atencion: Resumen["atencion"
 export function Ranking({
   filas,
   onElegir,
+  onResaltar,
   accion,
 }: {
   filas: { codigo: string; nombre: string; valor: number }[];
   onElegir: (codigo: string) => void;
+  /** Señala el territorio en el mapa mientras el cursor está encima de la fila. */
+  onResaltar: (codigo: string | null) => void;
   accion: string;
 }) {
   const max = Math.max(1, ...filas.map((f) => f.valor));
@@ -279,6 +352,10 @@ export function Ranking({
         >
           <button
             onClick={() => onElegir(f.codigo)}
+            onPointerEnter={(e) => e.pointerType === "mouse" && onResaltar(f.codigo)}
+            onPointerLeave={() => onResaltar(null)}
+            onFocus={() => onResaltar(f.codigo)}
+            onBlur={() => onResaltar(null)}
             title={accion}
             className="group relative flex w-full items-center gap-3 overflow-hidden rounded-sm px-2 py-2 text-left transition-colors hover:bg-white/5"
           >

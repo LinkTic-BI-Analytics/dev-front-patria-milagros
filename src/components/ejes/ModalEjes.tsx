@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useTransform, type MotionValue } from "motion/react";
+import {
+  AnimatePresence,
+  animate,
+  motion,
+  useMotionValue,
+  useTransform,
+  type MotionValue,
+} from "motion/react";
 import {
   ArrowRight,
   Check,
@@ -11,16 +18,18 @@ import {
   Gauge,
   Landmark,
   LayoutGrid,
+  MapPin,
+  MessageSquareQuote,
   Pause,
   Play,
   Quote,
   Siren,
   X,
 } from "lucide-react";
-import { formatoNumero } from "@/lib/datos/catalogos";
+import { SIN_TEMA, formatoNumero, temaDe } from "@/lib/datos/catalogos";
 import type { ResumenEje, ResumenEjes } from "@/lib/datos/ejes";
 import type { PndResumen } from "@/lib/datos/tipos";
-import { DUR, EASE, RESORTE } from "@/lib/ui/movimiento";
+import { DUR, EASE, RESORTE, reducirMovimiento } from "@/lib/ui/movimiento";
 import { useEscape } from "@/lib/ui/useEscape";
 import { CifraAnimada } from "@/components/tablero/CifraAnimada";
 import { useOrbita, type Orbita } from "./useOrbita";
@@ -39,21 +48,29 @@ const ENFOCABLES = 'button:not([disabled]),[href],input,[tabindex]:not([tabindex
 export function ModalEjes({
   pnd,
   resumen,
+  ejeInicial,
   nombreTerritorio,
+  nombreDe,
   filtrosActivos,
   ejesFiltrados,
   onFiltrar,
   onLimpiarFiltros,
+  onVerNarrativas,
   onCerrar,
 }: {
   pnd: PndResumen;
   resumen: ResumenEjes;
+  /** Eje con el que abrir, si se llegó desde el bloque del Plan. */
+  ejeInicial?: string | null;
   nombreTerritorio: string;
+  nombreDe: (codigo: string) => string;
   /** Filtros de tema o canal vigentes, ya descritos: las cifras del modal los respetan. */
   filtrosActivos: string[];
   ejesFiltrados: string[];
   onFiltrar: (eje: string) => void;
   onLimpiarFiltros: () => void;
+  /** Filtra por el eje, cierra el modal y baja a la tabla de narrativas. */
+  onVerNarrativas: (eje: string) => void;
   onCerrar: () => void;
 }) {
   const ejes = pnd.ejes;
@@ -61,6 +78,8 @@ export function ModalEjes({
 
   // Abre donde está la atención: en el eje filtrado, o con el de más aportes al frente.
   const [inicial] = useState(() => {
+    const pedido = ejeInicial ? ejes.findIndex((e) => e.id === ejeInicial) : -1;
+    if (pedido >= 0) return { elegido: pedido, alFrente: pedido };
     const filtrado = ejes.findIndex((e) => ejesFiltrados.includes(e.id));
     const mayor = resumen.ejes.reduce((m, e, i, l) => (e.total > l[m].total ? i : m), 0);
     return {
@@ -77,6 +96,25 @@ export function ModalEjes({
 
   const panel = useRef<HTMLDivElement>(null);
   useEscape(onCerrar);
+
+  // Apertura: el anillo entra barriendo 120° y las tarjetas salen del centro hacia su órbita.
+  // Con movimiento reducido no hay barrido: el modal solo aparece.
+  const apertura = useMotionValue(reducirMovimiento() ? 1 : 0.55);
+  const [abriendo, setAbriendo] = useState(!reducirMovimiento());
+  const { rotacion } = orbita;
+  useEffect(() => {
+    if (reducirMovimiento()) return;
+    const destino = rotacion.get();
+    rotacion.set(destino + 120);
+    const barrido = animate(rotacion, destino, { duration: 1.1, ease: EASE.salida });
+    const salida = animate(apertura, 1, { duration: 0.9, ease: EASE.salida });
+    const listo = setTimeout(() => setAbriendo(false), 700);
+    return () => {
+      barrido.stop();
+      salida.stop();
+      clearTimeout(listo);
+    };
+  }, [rotacion, apertura]);
 
   // Diálogo de verdad: el foco entra, no sale con Tab, y al cerrar vuelve a quien lo abrió.
   // El fondo ya está `inert` (Tablero); aquí se bloquea además el scroll de la página.
@@ -117,6 +155,10 @@ export function ModalEjes({
     e.preventDefault();
   };
 
+  // Paralaje del cielo: sigue al anillo, mucho más despacio.
+  const parallax = useTransform(orbita.rotacion, (r) => (r % 360) * 0.06);
+  const parallaxCerca = useTransform(orbita.rotacion, (r) => (r % 360) * 0.15);
+
   const maximo = Math.max(1, ...resumen.ejes.map((e) => e.total));
   const pctRelacionados = resumen.total ? (resumen.relacionados * 100) / resumen.total : 0;
 
@@ -143,7 +185,15 @@ export function ModalEjes({
         className="panel relative flex h-[min(94dvh,54rem)] w-[min(88rem,100%)] flex-col overflow-hidden outline-none"
       >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_35%_45%,rgba(0,49,137,.5),transparent_60%)]" />
-        <div className="estrellas pointer-events-none absolute inset-0 opacity-70" />
+        {/* Cielo en dos capas: la lejana se mueve menos y el anillo parece más profundo. */}
+        <motion.div
+          style={{ x: parallax }}
+          className="estrellas-lejos pointer-events-none absolute -inset-x-8 inset-y-0"
+        />
+        <motion.div
+          style={{ x: parallaxCerca }}
+          className="estrellas pointer-events-none absolute -inset-x-8 inset-y-0 opacity-70"
+        />
 
         {/* Encabezado */}
         <header className="relative flex items-start justify-between gap-4 border-b border-subtle px-4 py-3 sm:px-7 sm:py-4">
@@ -247,6 +297,7 @@ export function ModalEjes({
               <motion.div
                 {...orbita.escena}
                 className="absolute inset-0 grid cursor-grab touch-pan-y place-items-center select-none active:cursor-grabbing"
+                style={{ pointerEvents: abriendo ? "none" : "auto" }}
               >
                 {/* Nada de opacity, filter ni overflow aquí: aplanarían el 3D */}
                 <motion.div
@@ -256,9 +307,21 @@ export function ModalEjes({
                       rotateX: -8,
                       rotateY: orbita.rotacion,
                       "--radio": orbita.radioCss,
+                      "--apertura": apertura,
                     } as never
                   }
                 >
+                  {/* Suelo: una elipse que ancla el anillo. Sin ella las tarjetas flotan en negro. */}
+                  <span
+                    aria-hidden
+                    className="absolute top-1/2 left-1/2 block -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-gold-500/20 bg-[radial-gradient(ellipse_at_center,rgba(255,200,0,.10),transparent_68%)] [transform-style:preserve-3d]"
+                    style={{
+                      width: "calc(var(--radio) * 2 + 13rem)",
+                      height: "calc(var(--radio) * 2 + 13rem)",
+                      transform:
+                        "translate(-50%, -50%) rotateX(78deg) translateZ(-7rem) scale(var(--apertura))",
+                    }}
+                  />
                   {ejes.map((eje, i) => (
                     <TarjetaEje
                       key={eje.id}
@@ -397,6 +460,8 @@ export function ModalEjes({
                     eje={ejes[elegido]}
                     datos={datosDe(ejes[elegido].id)}
                     nombreTerritorio={nombreTerritorio}
+                    nombreDe={nombreDe}
+                    onVerNarrativas={() => onVerNarrativas(ejes[elegido].id)}
                     filtrado={ejesFiltrados.includes(ejes[elegido].id)}
                     onFiltrar={() => onFiltrar(ejes[elegido].id)}
                     onCerrar={onCerrar}
@@ -455,6 +520,10 @@ function TarjetaEje({
   // La profundidad se da con un velo interno: `filter` o `backdrop-filter` aquí aplanarían el 3D.
   const velo = useTransform(frente, [0, 1], [0.62, 0]);
   const toques = useTransform(frente, (f) => (f < 0.3 ? "none" : "auto"));
+  const brillo = useTransform(angulo, [-60, 60], ["100%", "0%"]);
+  // Sombra de contacto: la tarjeta del frente pisa el suelo, las del fondo apenas lo rozan.
+  const sombra = useTransform(frente, [0, 1], [0, 0.45]);
+  const anchoSombra = useTransform(frente, [0, 1], ["60%", "86%"]);
   const gestos = orbita.tarjeta(indice);
   const principal = datos.lineas[0];
 
@@ -468,10 +537,15 @@ function TarjetaEje({
         pointerEvents: toques as MotionValue<string>,
       }}
       transformTemplate={(_, generado) =>
-        `rotateY(${indice * grados}deg) translateZ(var(--radio)) ${generado}`
+        `rotateY(${indice * grados}deg) translateZ(calc(var(--radio) * var(--apertura, 1))) ${generado}`
       }
       className="absolute top-1/2 left-1/2 -mt-[5.75rem] -ml-[4.75rem] h-[11.5rem] w-[9.5rem] sm:-mt-[7.5rem] sm:-ml-[6.5rem] sm:h-60 sm:w-52"
     >
+      <motion.span
+        aria-hidden
+        style={{ opacity: sombra, width: anchoSombra }}
+        className="pointer-events-none absolute -bottom-4 left-1/2 h-4 -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,.85),transparent_70%)]"
+      />
       <motion.button
         tabIndex={-1}
         aria-hidden
@@ -480,12 +554,18 @@ function TarjetaEje({
         onPointerLeave={gestos.onPointerLeave}
         whileHover={{ scale: 1.04 }}
         whileTap={{ scale: 0.98 }}
-        className={`relative flex size-full flex-col gap-2 overflow-hidden rounded-lg border-2 p-3 text-left shadow-[var(--shadow-deep)] transition-colors sm:gap-3 sm:p-5 ${
+        className={`relative flex size-full flex-col gap-2 overflow-hidden rounded-lg border-2 border-t-white/25 p-3 text-left shadow-[var(--shadow-deep)] transition-colors sm:gap-3 sm:p-5 ${
           activo
             ? "border-gold-500 bg-[linear-gradient(180deg,#2b2a1c,#0a1a3a)] shadow-glow-gold"
             : "border-default bg-[#0c1f45]"
         }`}
       >
+        {/* Brillo especular: viaja por la cara según el ángulo, como una luz cenital fija. */}
+        <motion.span
+          aria-hidden
+          style={{ backgroundPositionX: brillo }}
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(105deg,transparent_38%,rgba(255,255,255,.10)_50%,transparent_62%)] bg-[length:300%_100%]"
+        />
         <span className="flex items-center justify-between">
           <span
             className={`cifra grid size-7 place-items-center rounded-full text-xs font-bold sm:size-9 sm:text-sm ${
@@ -495,7 +575,7 @@ function TarjetaEje({
             {eje.numero}
           </span>
           {filtrado && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(255,200,0,.16)] px-2 py-0.5 text-[10px] font-bold text-accent">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(255,200,0,.16)] px-2 py-0.5 text-[11px] font-bold text-accent">
               <Filter className="size-3" /> Filtro
             </span>
           )}
@@ -512,7 +592,7 @@ function TarjetaEje({
           <span className="cifra-display text-xl font-extrabold text-accent sm:text-2xl">
             {formatoNumero(datos.total)}
           </span>
-          <span className="ml-1.5 text-[10px] text-secondary sm:text-[11px]">
+          <span className="ml-1.5 text-[11px] text-secondary">
             {Math.round(datos.porcentaje)} % de {nombreTerritorio}
           </span>
           <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -641,15 +721,19 @@ function DetalleEje({
   eje,
   datos,
   nombreTerritorio,
+  nombreDe,
   filtrado,
   onFiltrar,
+  onVerNarrativas,
   onCerrar,
 }: {
   eje: Eje;
   datos: ResumenEje;
   nombreTerritorio: string;
+  nombreDe: (codigo: string) => string;
   filtrado: boolean;
   onFiltrar: () => void;
+  onVerNarrativas: () => void;
   onCerrar: () => void;
 }) {
   const [verVacias, setVerVacias] = useState(false);
@@ -749,6 +833,45 @@ function DetalleEje({
           </div>
         )}
 
+        {/* De qué sectores llega y dónde se concentra: el eje deja de ser una abstracción. */}
+        {(datos.sectores.length > 0 || datos.municipios.length > 0) && (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            {datos.sectores.length > 0 && (
+              <div>
+                <p className="etiqueta mb-2">Sectores que más hablan</p>
+                <ul className="space-y-1.5">
+                  {datos.sectores.map(({ tema, n }) => {
+                    const { corta, icono: Icono } = temaDe(tema === SIN_TEMA ? null : tema);
+                    return (
+                      <li key={tema} className="flex items-center gap-2 text-[13px]">
+                        <Icono className="size-3.5 shrink-0 text-accent" />
+                        <span className="min-w-0 flex-1 truncate text-secondary">{corta}</span>
+                        <span className="cifra text-primary">{formatoNumero(n)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+            {datos.municipios.length > 0 && (
+              <div>
+                <p className="etiqueta mb-2">Dónde se concentra</p>
+                <ul className="space-y-1.5">
+                  {datos.municipios.slice(0, 3).map(({ codigo, n }) => (
+                    <li key={codigo} className="flex items-center gap-2 text-[13px]">
+                      <MapPin className="size-3.5 shrink-0 text-muted" />
+                      <span className="min-w-0 flex-1 truncate text-secondary">
+                        {nombreDe(codigo)}
+                      </span>
+                      <span className="cifra text-primary">{formatoNumero(n)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
         <p className="etiqueta mt-6 mb-2">Lo que más se repite</p>
         {datos.relato ? (
           <figure className="rounded-sm bg-white/[.03] p-3">
@@ -809,6 +932,13 @@ function DetalleEje({
       {/* Pie fijo: filtrar no cierra el modal, para poder marcar varios ejes */}
       <div className="relative flex gap-2 border-t border-subtle bg-[rgba(8,23,51,.98)] p-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
         <div className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-t from-[rgba(8,23,51,.98)] to-transparent" />
+        <button
+          onClick={onVerNarrativas}
+          className="flex h-11 shrink-0 items-center gap-1.5 rounded-sm border border-default px-3 text-xs font-bold text-secondary transition-colors hover:border-gold-500 hover:text-accent"
+        >
+          <MessageSquareQuote className="size-4" />
+          <span className="hidden sm:inline">Ver sus narrativas</span>
+        </button>
         {filtrado ? (
           <>
             <button
@@ -865,7 +995,7 @@ function Dato({
         {alerta && valor > 0 && <Siren className="size-3.5 text-danger" />}
       </p>
       <p className="text-[11px] text-secondary">{etiqueta}</p>
-      <p className="mt-0.5 text-[10px] leading-tight text-muted">{nota}</p>
+      <p className="mt-0.5 text-[11px] leading-tight text-muted">{nota}</p>
     </div>
   );
 }

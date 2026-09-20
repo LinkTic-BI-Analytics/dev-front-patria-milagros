@@ -8,21 +8,30 @@
   --font-body: var(--fuente-inter), "Nunito Sans", system-ui, sans-serif;
   --font-mono: var(--fuente-mono), ui-monospace, monospace;
 
-  /* Vidrio más opaco y con menos desenfoque: se lee mejor sobre un mapa claro u oscuro y el
-     navegador no recalcula un blur grande en cada cuadro del globo. */
-  --glass-bg: rgba(8, 23, 51, 0.84);
+  /* Vidrio: más opaco y con `brightness` para oscurecer lo que queda debajo. Sobre un
+     departamento dorado el texto secundario pasa de ilegible a contrastado, y con 8 px de
+     desenfoque (no 14) el navegador no rehace un blur grande en cada cuadro del globo. */
+  --glass-bg: rgba(9, 24, 54, 0.8);
   --glass-border: rgba(255, 255, 255, 0.12);
+
+  /* Bordes de control: los del kit (18 %) desaparecen sobre el mapa. */
+  --border-control: rgba(255, 255, 255, 0.38);
+  --bg-mapa: #040c1d;
 }
 
-/* Contraste: el texto tenue del kit (55 %) no llega a AA sobre navy; se sube sin tocar tokens.css. */
+/* Contraste: los grises del kit (72 % y 55 %) no llegan a AA sobre navy. Se suben aquí para no
+   tocar `styles/tokens.css`, que es copia literal del kit de marca. */
 [data-theme="dark"] {
-  --text-muted: rgba(237, 241, 247, 0.64);
+  --text-secondary: rgba(237, 241, 247, 0.8);
+  --text-muted: rgba(237, 241, 247, 0.66);
 }
 
 @theme inline {
   --animate-shimmer: shimmer 1.8s linear infinite;
   --animate-aurora: aurora 18s ease-in-out infinite alternate;
   --animate-pulso: pulso 2.4s var(--ease-standard) infinite;
+  --color-control: var(--border-control);
+  --color-mapa: var(--bg-mapa);
 }
 
 html,
@@ -104,8 +113,8 @@ body {
 .vidrio {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(8px) brightness(0.72);
+  -webkit-backdrop-filter: blur(8px) brightness(0.72);
 }
 
 .panel {
@@ -125,6 +134,8 @@ body {
   overflow: hidden;
   background: var(--bg-base);
 }
+/* Sin `filter: blur(90px)`: difuminar dos discos de 70vmax obligaba a repintar toda la pantalla
+   en cada cuadro de la animación. El degradado ya nace suave. */
 .fondo-vivo::before,
 .fondo-vivo::after {
   content: "";
@@ -132,17 +143,27 @@ body {
   width: 70vmax;
   height: 70vmax;
   border-radius: 50%;
-  filter: blur(90px);
   opacity: 0.35;
+  will-change: transform;
   animation: var(--animate-aurora);
 }
 .fondo-vivo::before {
-  background: radial-gradient(circle, #003189 0%, transparent 65%);
+  background: radial-gradient(
+    circle,
+    rgba(0, 49, 137, 0.9) 0%,
+    rgba(0, 49, 137, 0.35) 38%,
+    transparent 72%
+  );
   top: -30vmax;
   left: -20vmax;
 }
 .fondo-vivo::after {
-  background: radial-gradient(circle, rgba(255, 200, 0, 0.35) 0%, transparent 60%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 200, 0, 0.3) 0%,
+    rgba(255, 200, 0, 0.12) 40%,
+    transparent 70%
+  );
   bottom: -35vmax;
   right: -25vmax;
   animation-delay: -9s;
@@ -158,14 +179,23 @@ body {
 }
 
 @layer components {
+/* El brillo viaja con `transform`: animar `background-position` repinta toda la superficie. */
 .shimmer {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+}
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     100deg,
-    rgba(255, 255, 255, 0.03) 30%,
+    transparent 20%,
     rgba(255, 255, 255, 0.09) 50%,
-    rgba(255, 255, 255, 0.03) 70%
+    transparent 80%
   );
-  background-size: 200% 100%;
+  will-change: transform;
   animation: var(--animate-shimmer);
 }
 
@@ -188,7 +218,7 @@ body {
 .mapboxgl-ctrl-group {
   background: var(--glass-bg) !important;
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px) brightness(0.72);
   border-radius: var(--radius-md) !important;
   overflow: hidden;
 }
@@ -205,7 +235,7 @@ body {
 .mapboxgl-ctrl-attrib a {
   color: var(--text-muted) !important;
 }
-.mapboxgl-canvas:focus {
+.mapboxgl-canvas:focus:not(:focus-visible) {
   outline: none;
 }
 .mapboxgl-canvas:focus-visible {
@@ -214,9 +244,24 @@ body {
 }
 
 /* Foco de teclado con la marca: dorado, separado y solo cuando se navega con teclado. */
-:where(a, button, summary, [role="tab"], [tabindex]:not([tabindex="-1"])):focus-visible {
+:where(
+  a,
+  button,
+  summary,
+  [role="tab"],
+  [role="radio"],
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
   outline: 2px solid var(--gold-500);
   outline-offset: 2px;
+}
+/* Sobre dorado el anillo dorado no se ve. */
+.bg-action-primary:focus-visible {
+  outline-color: var(--text-primary);
+}
+/* Dentro de contenedores con recorte (filas, chips en vidrio, tablas) el anillo va por dentro. */
+.foco-dentro:focus-visible {
+  outline-offset: -2px;
 }
 :where(input, textarea, select):focus-visible {
   outline: none;
@@ -224,10 +269,10 @@ body {
 
 @keyframes shimmer {
   from {
-    background-position: 200% 0;
+    transform: translateX(-100%);
   }
   to {
-    background-position: -200% 0;
+    transform: translateX(100%);
   }
 }
 
@@ -236,10 +281,10 @@ body {
     transform: translate3d(0, 0, 0) scale(1);
   }
   50% {
-    transform: translate3d(8vmax, 6vmax, 0) scale(1.15);
+    transform: translate3d(8vmax, 6vmax, 0) scale(1.06);
   }
   100% {
-    transform: translate3d(-4vmax, 10vmax, 0) scale(0.95);
+    transform: translate3d(-4vmax, 10vmax, 0) scale(0.98);
   }
 }
 
@@ -273,8 +318,23 @@ body {
     radial-gradient(1.6px 1.6px at 34% 72%, rgba(255, 229, 138, 0.45), transparent 60%),
     radial-gradient(1.2px 1.2px at 64% 58%, rgba(255, 255, 255, 0.35), transparent 60%),
     radial-gradient(1.1px 1.1px at 88% 78%, rgba(255, 255, 255, 0.3), transparent 60%),
-    radial-gradient(1.3px 1.3px at 22% 88%, rgba(129, 173, 235, 0.4), transparent 60%);
+    radial-gradient(1.3px 1.3px at 22% 88%, rgba(129, 173, 235, 0.4), transparent 60%),
+    radial-gradient(1.1px 1.1px at 46% 12%, rgba(255, 255, 255, 0.32), transparent 60%),
+    radial-gradient(1px 1px at 8% 54%, rgba(255, 255, 255, 0.28), transparent 60%),
+    radial-gradient(1.5px 1.5px at 92% 38%, rgba(255, 229, 138, 0.32), transparent 60%),
+    radial-gradient(1px 1px at 58% 92%, rgba(255, 255, 255, 0.26), transparent 60%),
+    radial-gradient(1.2px 1.2px at 72% 76%, rgba(129, 173, 235, 0.3), transparent 60%),
+    radial-gradient(1px 1px at 40% 40%, rgba(255, 255, 255, 0.22), transparent 60%);
   animation: titilar 6s ease-in-out infinite alternate;
+}
+
+/* Segunda capa, más tenue y más grande: da profundidad al fondo con el paralaje del anillo. */
+.estrellas-lejos {
+  background-image:
+    radial-gradient(2px 2px at 20% 34%, rgba(255, 255, 255, 0.18), transparent 60%),
+    radial-gradient(2.2px 2.2px at 68% 24%, rgba(255, 229, 138, 0.16), transparent 60%),
+    radial-gradient(1.8px 1.8px at 84% 64%, rgba(255, 255, 255, 0.16), transparent 60%),
+    radial-gradient(2px 2px at 30% 80%, rgba(129, 173, 235, 0.16), transparent 60%);
 }
 
 @keyframes titilar {

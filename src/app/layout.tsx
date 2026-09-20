@@ -23,6 +23,8 @@ const mono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Sistema de Escucha y Planeación Nacional",
   description: "Escucha ciudadana y panorama territorial para la planeación nacional.",
+  // Tablero institucional de acceso restringido: no tiene nada que hacer en un buscador.
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {
@@ -37,7 +39,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${montserrat.variable} ${inter.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
-        <div className="fondo-vivo" aria-hidden />
         <div className="grano" aria-hidden />
         <Proveedores>{children}</Proveedores>
       </body>

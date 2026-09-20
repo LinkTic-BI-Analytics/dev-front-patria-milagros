@@ -38,6 +38,18 @@ export function igualesSeguro(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/**
+ * Deja pasar solo rutas del propio tablero.
+ *
+ * Sin esta guarda, `?volver=` sería una redirección abierta: bastaría un enlace
+ * `/acceso?volver=//otro-sitio` para que el login rebotara a un dominio ajeno.
+ */
+export function rutaInterna(valor: string | null): string {
+  if (!valor || !valor.startsWith("/")) return "/";
+  if (valor.startsWith("//") || valor.startsWith("/\\")) return "/";
+  return valor;
+}
+
 export async function crearSesion(): Promise<string> {
   const vence = Math.floor(Date.now() / 1000) + DURACION_SESION_S;
   return `${vence}.${await firmar(String(vence))}`;

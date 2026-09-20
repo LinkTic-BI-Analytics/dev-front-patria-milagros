@@ -57,6 +57,8 @@ public/linea-grafica-patria/        Kit de marca: tokens, assets, guía.
 src/proxy.ts                        Guardia de sesión.
 src/app/
   layout.tsx, globals.css           <html data-theme="dark">, fuentes, utilidades propias, overrides.
+  not-found.tsx, global-error.tsx   404 y fallo antes del layout, los dos con la marca.
+  (tablero)/layout.tsx              El fondo vivo (aurora): solo donde se ve.
   styles/tokens.css, tailwind-theme.css   COPIAS del kit de marca: no se editan (se sobrescribe en globals.css).
   (tablero)/page.tsx                Server Component: connection() → obtenerTablero() → <Tablero datos>.
   (tablero)/acciones.ts             Server action `actualizarTablero` (botón «Actualizar» del encabezado).
@@ -72,6 +74,8 @@ src/lib/
   datos/ejes.ts                     resumenEjes(): lo que muestra el modal de ejes (por eje: líneas, necesidades, alertas, relato).
   datos/catalogos.ts                TEMAS (24 + sin_tema), CANALES, ESTADOS_ATENCION, METRICAS, RAMPA_MAPA, formatos.
   datos/internacional.ts            cifrasPorPais(): único punto para enchufar datos por país.
+  datos/titulares.ts                titular(): la frase del héroe, por reglas y en orden de prioridad.
+  datos/estadoUrl.ts                leerEstado()/escribirEstado(): la vista compartible en la URL.
   pnd/catalogo.json, cargar.ts, alinear.ts   Catálogo del Plan (6 ejes, 43 líneas) y alineador por palabras clave.
   geo/cajas.json                    bbox por departamento.
   ui/movimiento.ts                  EASE, DUR, RESORTE y reducirMovimiento(): ÚNICA fuente de curvas y tiempos.
@@ -86,6 +90,8 @@ src/components/
   tablero/Narrativas.tsx            Pestañas Panorama / Plan Nacional / Narrativas, chips de filtros, tablas.
   tablero/AlineacionPnd.tsx         Bloque del Plan (exporta SIN_RELACION).
   tablero/EstadoVacio.tsx           Vacío con causa y salida. CifraAnimada.tsx: variantes mono/display.
+  tablero/Presentacion.tsx          Modo presentación: seis pasos, siempre a mano.
+  ui/Segmentado.tsx, ui/Pista.tsx   Radiogroup con pastilla y tooltip por portal.
   mapa/MapaColombia.tsx             Mapbox: capas, intro, interacción, tooltip, leyenda + `pie`, error.
   mapa/paises.ts                    Capas pais-*, zoomGlobo() y crearGiro() (integrador del giro).
   mapa/estilo.ts                    Expresiones y escala de color compartidas.
@@ -112,7 +118,7 @@ src/components/
    (`claves`, `sectores`) del catálogo del Plan.
 7. **Agregación en cliente** (`Tablero.tsx`, todo `useMemo`): `filtrar(datos, {temas, canales, ejes})`
    → `valoresMapa`, `resumir(filtrados, codigo, ejeMeses)`, `cifrasPorPais`. `codigo = seleccion ??
-   departamento` (`null` en ámbito internacional). `enTerritorio` compara por prefijo DIVIPOLA.
+departamento` (`null` en ámbito internacional). `enTerritorio` compara por prefijo DIVIPOLA.
    - Lo que **es a la vez gráfica y filtro** se calcula sin su propio filtro: temas sin filtro de tema;
      ejes (modal y pestaña Plan) con `filtradosSinEje`. Si no, al filtrar quedaría una sola barra.
 8. **Reglas de conteo** (de `07_conteo.sql`, replicadas en `agregar.ts`):
@@ -122,7 +128,10 @@ src/components/
    - Un aporte sin eje no pasa el filtro por eje (no hay asignación por descarte).
 9. **Control.** Sin filtros, los totales del cliente deben coincidir con el RPC `indicadores`
    (`control`). El pie del panel lo dice cuando concilian.
-10. **«Datos en vivo».** No hay refresco automático. El botón del encabezado llama a la server action
+10. **La vista viaja en la URL** (`estadoUrl.ts`): ámbito, territorio, métrica, 2D/3D, filtros y
+    pestaña. Se escribe con `replaceState` (cada clic en el mapa no es una página del historial) y
+    `page.tsx` la lee de `searchParams`. La búsqueda y la vista de la tabla se quedan locales.
+11. **«Datos en vivo».** No hay refresco automático. El botón del encabezado llama a la server action
     `actualizarTablero` (valida sesión; `null` = sesión vencida → `/acceso`) y reemplaza `datos` en
     el estado de `Tablero` **sin recargar ni perder filtros, territorio o cámara**.
 
@@ -132,7 +141,11 @@ src/components/
   `"<vence_epoch_s>.<HMAC-SHA256 base64url>"` firmada con `SESSION_SECRET` (Web Crypto, igual en
   proxy y servidor). **Firmada, no cifrada.** Dura 12 h (`DURACION_SESION_S`); la interfaz ya no lo
   anuncia (decisión del cliente: se quitó solo el texto, la caducidad sigue).
-- `ingresar`: comparación de tiempo constante; 600 ms de pausa si falla. `salir`: borra la cookie.
+- `ingresar`: `.trim()` al token, comparación de tiempo constante y 600 ms de pausa si falla.
+  `salir`: borra la cookie, con confirmación en el encabezado.
+- **Sesión vencida:** si llega una cookie que ya no vale, el proxy redirige a
+  `/acceso?vencida=1&volver=<ruta>`; tras entrar se vuelve allí. `volver` pasa siempre por
+  `rutaInterna()`, que solo deja rutas propias: sin esa guarda sería una redirección abierta.
 - `proxy.ts`: sin sesión → `/acceso`; con sesión en `/acceso` → `/`. **El matcher excluye**
   `_next/*`, `data/`, `linea-grafica-patria/` y rutas que terminan en
   `.png|.jpg|.jpeg|.svg|.webp|.ico|.json|.geojson`: todo eso se sirve **sin autenticación**. No crear
@@ -171,7 +184,7 @@ src/components/
 ## 8. Módulo PND y confidencialidad
 
 - `src/lib/pnd/catalogo.json`: `{fuente, ejes[6]}`; cada eje `{id, numero, nombre, vision,
-  indicadores|null, area, lineas[{id, nombre, sectores[], claves[]}]}` (43 líneas). Es **derivado**
+indicadores|null, area, lineas[{id, nombre, sectores[], claves[]}]}` (43 líneas). Es **derivado**
   del PDF y **sí se versiona y se despliega**.
 - `alinear.ts` (genérico): claves como palabra completa sobre texto normalizado; 2 puntos por clave,
   3 si es frase; desempates: sector del aporte ∈ `sectores` → primera mención → orden del catálogo;
@@ -191,6 +204,7 @@ src/components/
     exit 1
   fi
   ```
+
 - Tampoco se versiona ningún `.env*` (salvo `.env.example`).
 
 ## 9. Convenciones de interfaz
@@ -210,13 +224,34 @@ src/components/
 - **Modal de ejes.** Todos los gestos pasan por `useOrbita`: flechas, puntos, teclado (←/→, Inicio/Fin,
   1–6), rueda/trackpad (pasos discretos, listener nativo no pasivo) y arrastre con inercia.
   `PERSPECTIVA` del hook debe coincidir con `[perspective:1400px]`.
-- Sobrescrituras de marca en `globals.css` (vidrio más opaco con blur de 6 px, `--text-muted` con
-  contraste AA). No tocar `styles/tokens.css` ni `tailwind-theme.css`.
+- **Radiogroup o tabs, no los dos.** `Segmentado` (ámbito, métrica, vista de la tabla) es un
+  `radiogroup`: elige un valor. `role="tab"` solo donde hay paneles (narrativas, puntos del modal).
+- **Mínimos táctiles:** 44 px en cualquier control que se toque (`pointer-coarse:h-11` /
+  `pointer-coarse:size-11`), o área extendida con `after:absolute after:-inset-2` cuando el control
+  es pequeño a propósito.
+- **Nada por debajo de 11 px**, y a 11 px solo `.etiqueta` (en mayúsculas y con peso 700) y las
+  cifras auxiliares.
+- **Duraciones y curvas** (todas en `movimiento.ts`):
+
+  | Uso                                  | Valor                                      |
+  | ------------------------------------ | ------------------------------------------ |
+  | Aparecer / desaparecer algo pequeño  | `DUR.rapida` 0,2 s                         |
+  | Cambio de contenido                  | `DUR.base` 0,32 s                          |
+  | Entrada de un panel o del modal      | `DUR.lenta` 0,5 s                          |
+  | Escena (intro, vuelo del mapa)       | `DUR.escena` 0,9 s · vuelos de 1,7 a 2,8 s |
+  | Pastilla que se mueve entre opciones | `RESORTE.pastilla`                         |
+  | Anillo del modal de ejes             | `RESORTE.orbita`                           |
+  | Curva por defecto                    | `EASE.salida`                              |
+
+- Sobrescrituras de marca en `globals.css` (vidrio más opaco con `brightness`, `--text-secondary` y
+  `--text-muted` con contraste AA, `--border-control`). No tocar `styles/tokens.css` ni
+  `tailwind-theme.css`: son copias literales del kit.
 - Formato: Prettier a 100 columnas (`npx prettier --print-width 100`); no hay config versionada.
 
 ## 10. Trampas conocidas (todas ya costaron un bug)
 
 **Mapbox**
+
 - **No usar `map.isStyleLoaded()` como guarda** de efectos: se queda en `false` y los departamentos
   no se pintan nunca. La guarda es `mapaListo()` (existen `dep-relleno` y `pais-relleno`).
 - `jumpTo`/`setCenter` **cancelan** cualquier `easeTo`/`fitBounds` en curso → el giro calla cuando
@@ -228,6 +263,7 @@ src/components/
 - `mapbox-gl.css` pone `position: relative` al contenedor → va envuelto en un `absolute inset-0`.
 
 **motion / React**
+
 - **Nada de `AnimatePresence mode="wait"` para texto con clave de datos** (dejó títulos colgados dos
   veces). Usar elementos con `key` sin salida, o una rejilla apilada `[grid-area:1/1]`.
 - Un `style.transform` en cadena anula los MotionValue de transform → `transformTemplate`, o
@@ -239,6 +275,7 @@ src/components/
 - Nada de `Date.now()` al renderizar: el «hace X min» usa `useSyncExternalStore` con un reloj.
 
 **Next 16**
+
 - Server actions = POST público: validan sesión dentro. Sin `redirect()` dentro de un `try` del
   cliente; la acción devuelve `null` y el cliente navega con `router.replace`.
 - `next dev` reescribe el bloque `nextjs-agent-rules` de este archivo: se versiona tal cual.
@@ -259,14 +296,14 @@ src/components/
 
 ## 12. Variables de entorno y despliegue
 
-| Variable | Uso |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto (se lee solo en servidor) |
-| `SUPABASE_SECRET_KEY` | Llave secreta. **Solo servidor, jamás `NEXT_PUBLIC_`** |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Reservada; hoy ningún archivo la usa |
-| `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_MAPBOX_STYLE` | Mapa base (restringir el token por URL) |
-| `ACCESS_TOKEN` | Token único de acceso |
-| `SESSION_SECRET` | HMAC de la cookie (`openssl rand -base64 32`). Rotarla cierra todas las sesiones |
+| Variable                                               | Uso                                                                              |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`                             | URL del proyecto (se lee solo en servidor)                                       |
+| `SUPABASE_SECRET_KEY`                                  | Llave secreta. **Solo servidor, jamás `NEXT_PUBLIC_`**                           |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`                 | Reservada; hoy ningún archivo la usa                                             |
+| `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_MAPBOX_STYLE` | Mapa base (restringir el token por URL)                                          |
+| `ACCESS_TOKEN`                                         | Token único de acceso                                                            |
+| `SESSION_SECRET`                                       | HMAC de la cookie (`openssl rand -base64 32`). Rotarla cierra todas las sesiones |
 
 Vercel con el preset de Next.js y pnpm; cargar las variables en Production y Preview. La página es
 dinámica: cada visita hace ~9 lecturas paginadas a Supabase. Commits y push a `main` **solo cuando
@@ -274,6 +311,21 @@ la persona responsable lo indique**.
 
 ## 13. Estado del rediseño UX
 
-Oleadas 0–4 de `docs/hoja-de-ruta-ux.md` implementadas (cimientos, globo, modal de ejes, defectos
-del tablero, pulido). Pendientes documentadas: oleadas 5–6 y, de la 4, M4 (reordenar controles
-superiores), M5 (padding medido), M7 (torres 3D animadas) y P6 (densidad del panel).
+**Las siete oleadas de `docs/hoja-de-ruta-ux.md` están implementadas** (0 cimientos · 1 globo y
+navegación del modal · 2 información del modal · 3 defectos del tablero · 4 pulido · 5 profundidad ·
+6 opcionales). Lo que queda fuera, y por qué:
+
+- **R2** (recorte condicional del vidrio sobre el mapa) pide una grabación de rendimiento en el
+  equipo del cliente. El vidrio ya usa menos desenfoque; si allí se midieran cuadros por encima de
+  16 ms, la receta está en la hoja de ruta.
+- **R5** (tween del coroplético en JS) depende de que M7 no baste; M7 está hecho y funde bien.
+- **M9 parcial:** el resaltado ranking → mapa está; el buscador «Ir a…» y la ficha anclada en táctil
+  no, porque M1 (botón «Ver municipios») ya resuelve el caso.
+- Pendiente de equipos reales: trackpad y Magic Mouse en Safari, ratón de muescas en Windows y
+  Firefox, iOS y Android.
+
+Cosas que nacieron en estas oleadas y conviene conocer: estado de la vista en la URL
+(`src/lib/datos/estadoUrl.ts`, con «Copiar enlace de esta vista»), modo presentación de seis pasos
+(`Presentacion.tsx`), titulares por reglas (`titulares.ts`), hoja de filtros en móvil
+(`ControlesMapa.tsx`) y regreso seguro tras una sesión vencida (`?vencida`, `?volver` con
+`rutaInterna`).

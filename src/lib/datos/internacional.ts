@@ -9,6 +9,9 @@ import type { Metrica } from "./catalogos";
 
 export const COLOMBIA_ISO = "COL";
 
+/** Países del mapa mundial (`public/data/geo/paises.json`). Lo imprime `preparar-geo.mjs`. */
+export const PAISES_EN_EL_MAPA = 177;
+
 export type CifrasPais = Record<Metrica, number>;
 
 export function cifrasPorPais(f: Filtrados): Map<string, CifrasPais> {

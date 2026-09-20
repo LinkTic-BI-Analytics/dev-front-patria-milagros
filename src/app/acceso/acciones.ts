@@ -7,12 +7,15 @@ import {
   DURACION_SESION_S,
   crearSesion,
   igualesSeguro,
+  rutaInterna,
 } from "@/lib/auth/sesion";
 
 export type EstadoAcceso = { error: string | null; intento: number };
 
 export async function ingresar(previo: EstadoAcceso, formData: FormData): Promise<EstadoAcceso> {
-  const token = String(formData.get("token") ?? "");
+  // `.trim()`: un token copiado y pegado suele traer un espacio detrás, y rechazarlo por eso
+  // parece un token equivocado.
+  const token = String(formData.get("token") ?? "").trim();
   const esperado = process.env.ACCESS_TOKEN;
 
   if (!esperado) {
@@ -33,7 +36,7 @@ export async function ingresar(previo: EstadoAcceso, formData: FormData): Promis
     maxAge: DURACION_SESION_S,
   });
 
-  redirect("/");
+  redirect(rutaInterna(String(formData.get("volver") ?? "/")));
 }
 
 export async function salir() {

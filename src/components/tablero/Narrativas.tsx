@@ -1,15 +1,20 @@
 "use client";
 
 import {
+  Fragment,
   memo,
   useDeferredValue,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  ArrowDownUp,
+  ArrowRight,
   BadgeCheck,
   ChartPie,
   ChevronLeft,
@@ -45,7 +50,8 @@ import { EstadoVacio } from "./EstadoVacio";
 import { EASE, RESORTE } from "@/lib/ui/movimiento";
 
 const suave = EASE.salida;
-const POR_PAGINA = 8;
+const PAGINAS = [10, 25, 50];
+type Orden = "veces" | "fecha";
 
 const fechaCorta = new Intl.DateTimeFormat("es-CO", {
   day: "numeric",
@@ -56,7 +62,8 @@ const fechaCorta = new Intl.DateTimeFormat("es-CO", {
 const formatoFecha = (f: string) => fechaCorta.format(new Date(`${f}T12:00:00Z`));
 
 type Vista = "agrupadas" | "todas";
-type Pestana = "panorama" | "plan" | "narrativas";
+
+export type Pestana = "panorama" | "plan" | "narrativas";
 
 // Memoizado: el tablero se re-renderiza al mover el cursor por el mapa y esto no depende de eso.
 export const Narrativas = memo(function Narrativas({
@@ -66,6 +73,10 @@ export const Narrativas = memo(function Narrativas({
   filtros,
   onFiltros,
   onQuitarTerritorio,
+  onTerritorio,
+  onAbrirEje,
+  pestana,
+  onPestana,
   codigo,
   nombreTerritorio,
 }: {
@@ -76,20 +87,37 @@ export const Narrativas = memo(function Narrativas({
   filtros: Filtros;
   onFiltros: Dispatch<SetStateAction<Filtros>>;
   onQuitarTerritorio: () => void;
+  /** Llevar el mapa a un municipio desde un relato. */
+  onTerritorio: (codigo: string) => void;
+  /** Abrir el modal de ejes articuladores en un eje concreto. */
+  onAbrirEje: (id: string) => void;
+  pestana: Pestana;
+  onPestana: (p: Pestana) => void;
   codigo: string | null;
   nombreTerritorio: string;
 }) {
   const [vista, setVista] = useState<Vista>("agrupadas");
+  const [porPagina, setPorPagina] = useState(10);
+  const [orden, setOrden] = useState<{ campo: Orden; dir: "asc" | "desc" }>({
+    campo: "veces",
+    dir: "desc",
+  });
+  const [abierta, setAbierta] = useState<string | null>(null);
+  const [soloConfirmadas, setSoloConfirmadas] = useState(false);
+  const campo = useRef<HTMLInputElement>(null);
   const [busqueda, setBusqueda] = useState("");
   // El eje se filtra en el tablero entero (un solo filtro, no uno aquí y otro en el mapa). Lo único
   // propio de esta tabla es «sin relación clara», que no existe como eje y excluye a los demás.
   const [soloSinRelacion, setSoloSinRelacion] = useState(false);
+  // Acota la tabla a una línea del Plan. No es un filtro del tablero: solo de esta tabla.
+  const [lineaPnd, setLineaPnd] = useState<string | null>(null);
   const sinRelacion = soloSinRelacion && filtros.ejes.length === 0;
-  const [pestana, setPestana] = useState<Pestana>("panorama");
+  // La pestaña vive en el Tablero: el modal de ejes y el mapa también la mueven.
+  const setPestana = onPestana;
   // La página vuelve a 1 cuando cambia lo que se está mirando.
-  const contexto = `${codigo}|${filtros.temas.join()}|${filtros.canales.join()}|${filtros.ejes.join()}|${vista}|${busqueda}|${sinRelacion}`;
+  const contexto = `${codigo}|${filtros.temas.join()}|${filtros.canales.join()}|${filtros.ejes.join()}|${vista}|${busqueda}|${sinRelacion}|${lineaPnd}|${soloConfirmadas}`;
   // Lo mismo sin la búsqueda: teclear filtra, pero no vuelve a animar toda la tabla.
-  const claveTabla = `${codigo}|${filtros.temas.join()}|${filtros.canales.join()}|${filtros.ejes.join()}|${vista}|${sinRelacion}`;
+  const claveTabla = `${codigo}|${filtros.temas.join()}|${filtros.canales.join()}|${filtros.ejes.join()}|${vista}|${sinRelacion}|${lineaPnd}|${soloConfirmadas}`;
   const [pagina, setPagina] = useState({ contexto, n: 0 });
   const n = pagina.contexto === contexto ? pagina.n : 0;
 
@@ -123,10 +151,11 @@ export const Narrativas = memo(function Narrativas({
       ),
     [datos.pnd],
   );
-  const filasTabla = useMemo(
-    () => (sinRelacion ? filas.filter((f) => !f.pnd) : filas),
-    [filas, sinRelacion],
-  );
+  const filasTabla = useMemo(() => {
+    let base = sinRelacion ? filas.filter((f) => !f.pnd) : filas;
+    if (lineaPnd) base = base.filter((f) => f.pnd?.linea === lineaPnd);
+    return soloConfirmadas ? base.filter((f) => f.confirmada) : base;
+  }, [filas, sinRelacion, lineaPnd, soloConfirmadas]);
   const alternarEje = (id: string) => {
     if (id === SIN_RELACION) {
       setSoloSinRelacion(!sinRelacion);
@@ -160,18 +189,63 @@ export const Narrativas = memo(function Narrativas({
       `${f.cuerpo} ${temaDe(f.aporte.tema).etiqueta} ${lugaresDe(f.aporte.municipios)} ${nombreLinea(f.pnd?.linea)}`,
     ),
   );
-  const total = vista === "agrupadas" ? listaGrupos.length : listaTodas.length;
-  const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
+  // El orden lo elige quien lee: por lo que más se repite o por lo más reciente.
+  const signo = orden.dir === "desc" ? 1 : -1;
+  const gruposOrdenados = useMemo(
+    () =>
+      orden.campo === "veces"
+        ? listaGrupos
+        : [...listaGrupos].sort((a, b) => signo * b.ultima.localeCompare(a.ultima)),
+    // `listaGrupos` ya viene por veces descendente de `agruparNarrativas`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [listaGrupos, orden],
+  );
+  const gruposVisibles =
+    orden.campo === "veces" && orden.dir === "asc" ? [...gruposOrdenados].reverse() : gruposOrdenados;
+  const todasOrdenadas = useMemo(
+    () =>
+      orden.dir === "desc"
+        ? listaTodas
+        : [...listaTodas].sort((a, b) => a.aporte.fecha.localeCompare(b.aporte.fecha)),
+    [listaTodas, orden.dir],
+  );
+
+  const total = vista === "agrupadas" ? gruposVisibles.length : todasOrdenadas.length;
+  const paginas = Math.max(1, Math.ceil(total / porPagina));
   const actual = Math.min(n, paginas - 1);
-  const desde = actual * POR_PAGINA;
+  const desde = actual * porPagina;
+  const irAPagina = (p: number) => {
+    setPagina({ contexto, n: Math.max(0, Math.min(p, paginas - 1)) });
+    setAbierta(null);
+    tabla.current?.scrollIntoView({ block: "nearest" });
+  };
+  const ordenar = (c: Orden) =>
+    setOrden((o) => ({ campo: c, dir: o.campo === c && o.dir === "desc" ? "asc" : "desc" }));
+  const tabla = useRef<HTMLDivElement>(null);
+
+  // Atajo «/»: el buscador es lo que más se usa de esta zona.
+  useEffect(() => {
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const activo = document.activeElement;
+      if (activo instanceof HTMLInputElement || activo instanceof HTMLTextAreaElement) return;
+      if (!campo.current) return;
+      e.preventDefault();
+      setPestana("narrativas");
+      campo.current.focus();
+    };
+    window.addEventListener("keydown", alTeclear);
+    return () => window.removeEventListener("keydown", alTeclear);
+  }, [setPestana]);
 
   const pestanas = (
     [
-      { id: "panorama", etiqueta: "Panorama", icono: ChartPie, detalle: null },
+      { id: "panorama", etiqueta: "Panorama", corta: "Panorama", icono: ChartPie, detalle: null },
       datos.pnd
         ? {
             id: "plan",
             etiqueta: "Plan Nacional",
+            corta: "Plan",
             icono: Compass,
             detalle: alineacion?.total
               ? `${Math.round((alineacion.relacionadas * 100) / Math.max(alineacion.total, 1))}%`
@@ -181,12 +255,14 @@ export const Narrativas = memo(function Narrativas({
       {
         id: "narrativas",
         etiqueta: "Narrativas",
+        corta: "Tabla",
         icono: Rows3,
         detalle: formatoNumero(filas.length),
       },
     ] as ({
       id: Pestana;
       etiqueta: string;
+      corta: string;
       icono: typeof ChartPie;
       detalle: string | null;
     } | null)[]
@@ -215,6 +291,15 @@ export const Narrativas = memo(function Narrativas({
         quitar: () => onFiltros((f) => ({ ...f, ejes: f.ejes.filter((x) => x !== id) })),
       };
     }),
+    ...(lineaPnd
+      ? [
+          {
+            clave: `linea-${lineaPnd}`,
+            etiqueta: `Línea: ${lineaPorId.get(lineaPnd)?.nombre ?? lineaPnd}`,
+            quitar: () => setLineaPnd(null),
+          },
+        ]
+      : []),
     ...(sinRelacion
       ? [
           {
@@ -231,6 +316,8 @@ export const Narrativas = memo(function Narrativas({
   const limpiarTodo = () => {
     onFiltros({ temas: [], canales: [], ejes: [] });
     setSoloSinRelacion(false);
+    setLineaPnd(null);
+    setSoloConfirmadas(false);
     setBusqueda("");
     onQuitarTerritorio();
   };
@@ -243,6 +330,8 @@ export const Narrativas = memo(function Narrativas({
             onClick: () => {
               onFiltros({ temas: [], canales: [], ejes: [] });
               setSoloSinRelacion(false);
+              setLineaPnd(null);
+              setSoloConfirmadas(false);
               setBusqueda("");
             },
           },
@@ -285,11 +374,27 @@ export const Narrativas = memo(function Narrativas({
             </motion.span>
           </h2>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <Pastilla valor={resumen.total} etiqueta="narrativas" />
-          <Pastilla valor={resumen.distintas} etiqueta="relatos distintos" />
-          <Pastilla valor={resumen.confirmadas} etiqueta="confirmadas por quien las contó" />
-        </div>
+        {/* De cuántos aportes salen estas narrativas, y en cuántos relatos distintos caben. */}
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+          <span>
+            <span className="cifra text-primary">{formatoNumero(filtrados.aportes.length)}</span>{" "}
+            aportes
+          </span>
+          <ArrowRight className="size-3" />
+          <span>
+            <span className="cifra text-primary">{formatoNumero(resumen.total)}</span> con narrativa
+          </span>
+          <ArrowRight className="size-3" />
+          <span>
+            <span className="cifra text-primary">{formatoNumero(resumen.distintas)}</span> relatos
+            distintos
+          </span>
+          <span className="text-subtle">·</span>
+          <span>
+            <span className="cifra text-info">{formatoNumero(resumen.confirmadas)}</span>{" "}
+            confirmadas por quien las contó
+          </span>
+        </p>
       </div>
       {chips.length > 0 && (
         <div className="relative mt-3 flex flex-wrap items-center gap-1.5 text-xs">
@@ -314,19 +419,34 @@ export const Narrativas = memo(function Narrativas({
       )}
 
       {/* Pestañas: una lectura a la vez */}
-      <div className="relative mt-5 flex gap-1 border-b border-subtle" role="tablist">
-        {pestanas.map(({ id, etiqueta, icono: Icono, detalle }) => (
+      <div
+        role="tablist"
+        aria-label="Vistas de las narrativas"
+        onKeyDown={(e) => {
+          const paso = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          if (!paso) return;
+          e.preventDefault();
+          const i = pestanas.findIndex((p) => p.id === pestana);
+          setPestana(pestanas[(i + paso + pestanas.length) % pestanas.length].id);
+        }}
+        className="scroll-fino relative mt-5 flex snap-x gap-1 overflow-x-auto border-b border-subtle"
+      >
+        {pestanas.map(({ id, etiqueta, corta, icono: Icono, detalle }) => (
           <button
             key={id}
+            id={`pestana-${id}`}
             role="tab"
             aria-selected={pestana === id}
+            aria-controls={`panel-${id}`}
+            tabIndex={pestana === id ? 0 : -1}
             onClick={() => setPestana(id)}
-            className={`relative flex items-center gap-2 px-3 py-2.5 text-sm font-bold transition-colors ${
+            className={`foco-dentro relative flex snap-start items-center gap-2 px-3 py-2.5 text-sm font-bold whitespace-nowrap transition-colors ${
               pestana === id ? "text-primary" : "text-muted hover:text-secondary"
             }`}
           >
             <Icono className={`size-4 ${pestana === id ? "text-accent" : ""}`} />
-            {etiqueta}
+            <span className="sm:hidden">{corta}</span>
+            <span className="hidden sm:inline">{etiqueta}</span>
             {detalle !== null && (
               <span className="cifra rounded-full bg-white/8 px-1.5 text-[11px] text-secondary">
                 {detalle}
@@ -335,7 +455,7 @@ export const Narrativas = memo(function Narrativas({
             {pestana === id && (
               <motion.span
                 layoutId="pestana-narrativas"
-                className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-gold-500"
+                className="absolute inset-x-1 bottom-0 h-0.5 rounded-full bg-gold-500"
                 transition={RESORTE.pastilla}
               />
             )}
@@ -343,13 +463,17 @@ export const Narrativas = memo(function Narrativas({
         ))}
       </div>
 
+      {/* `mode="wait"` es seguro aquí: lo dispara un clic, no un dato, y la salida es solo opacidad. */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={pestana}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.3, ease: suave }}
+          id={`panel-${pestana}`}
+          role="tabpanel"
+          aria-labelledby={`pestana-${pestana}`}
+          initial={{ opacity: 0, x: 16 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, transition: { duration: 0.12 } }}
+          transition={{ duration: 0.25, ease: suave }}
         >
           {pestana === "panorama" && (
             <>
@@ -382,6 +506,24 @@ export const Narrativas = memo(function Narrativas({
                             null as (typeof alineacion.ejes)[number] | null,
                           ) ?? null)
                     }
+                    onTema={(t) =>
+                      onFiltros((f) => ({
+                        ...f,
+                        temas: f.temas.includes(t)
+                          ? f.temas.filter((x) => x !== t)
+                          : [...f.temas, t],
+                      }))
+                    }
+                    onEje={alternarEje}
+                    onBuscar={(t) => {
+                      setBusqueda(t);
+                      setPestana("narrativas");
+                    }}
+                    onRelato={(clave) => {
+                      setAbierta(clave);
+                      setVista("agrupadas");
+                      setPestana("narrativas");
+                    }}
                   />
                 )}
               </motion.div>
@@ -397,6 +539,12 @@ export const Narrativas = memo(function Narrativas({
                   nombreTerritorio={nombreTerritorio}
                   activos={sinRelacion ? [SIN_RELACION] : filtros.ejes}
                   onEje={alternarEje}
+                  lineaActiva={lineaPnd}
+                  onLinea={(id) => {
+                    setLineaPnd(id);
+                    if (id) setPestana("narrativas");
+                  }}
+                  onAbrirEje={onAbrirEje}
                 />
               ) : (
                 <div className="mt-6">
@@ -450,10 +598,21 @@ export const Narrativas = memo(function Narrativas({
                     ))}
                   </div>
 
-                  <label className="group relative w-full sm:w-72">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-secondary select-none sm:mr-auto">
+                    <input
+                      type="checkbox"
+                      checked={soloConfirmadas}
+                      onChange={(e) => setSoloConfirmadas(e.target.checked)}
+                      className="size-4 accent-[var(--gold-500)]"
+                    />
+                    Solo confirmadas
+                  </label>
+
+                  <label className="group relative w-full sm:w-80">
                     <span className="sr-only">Buscar en las narrativas</span>
                     <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted group-focus-within:text-accent" />
                     <input
+                      ref={campo}
                       value={busqueda}
                       onChange={(e) => setBusqueda(e.target.value)}
                       onKeyDown={(e) => {
@@ -468,35 +627,62 @@ export const Narrativas = memo(function Narrativas({
                           ? "Buscar relato, tema, lugar o línea"
                           : "Buscar relato, tema o municipio"
                       }
-                      className="h-9 w-full rounded-sm border border-default bg-surface-2/60 pr-8 pl-9 text-sm text-primary outline-none transition-all placeholder:text-muted focus:border-gold-500 focus:shadow-[0_0_0_3px_rgba(255,200,0,.2)]"
+                      className="h-9 w-full rounded-sm border border-control bg-surface-2/60 pr-20 pl-9 text-sm text-primary outline-none transition-all placeholder:text-muted focus:border-gold-500 focus:shadow-[0_0_0_3px_rgba(255,200,0,.2)]"
                     />
-                    {busqueda && (
-                      <button
-                        onClick={() => setBusqueda("")}
-                        className="absolute top-1/2 right-2 -translate-y-1/2 text-muted hover:text-primary"
-                        aria-label="Limpiar búsqueda"
-                      >
-                        <X className="size-4" />
-                      </button>
+                    {busqueda ? (
+                      <span className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1.5">
+                        <span aria-live="polite" className="cifra text-[11px] text-muted">
+                          {formatoNumero(total)}
+                        </span>
+                        <button
+                          onClick={() => setBusqueda("")}
+                          className="relative text-muted after:absolute after:-inset-2 hover:text-primary"
+                          aria-label="Limpiar búsqueda"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </span>
+                    ) : (
+                      <kbd className="cifra pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 rounded-xs border border-subtle px-1.5 text-[11px] text-muted pointer-fine:block">
+                        /
+                      </kbd>
                     )}
                   </label>
                 </div>
 
-                <div className="@container overflow-hidden rounded-md border border-subtle">
+                <div
+                  ref={tabla}
+                  className="@container scroll-mt-24 overflow-hidden rounded-md border border-subtle"
+                >
                   {vista === "agrupadas" ? (
                     <TablaAgrupada
-                      grupos={listaGrupos.slice(desde, desde + POR_PAGINA)}
+                      grupos={gruposVisibles.slice(desde, desde + porPagina)}
                       maximo={listaGrupos[0]?.veces ?? 1}
                       nombreDe={nombreDe}
                       lineaDe={datos.pnd ? (id) => lineaPorId.get(id ?? "") ?? null : null}
                       claveAnimacion={`${claveTabla}|${actual}`}
+                      busqueda={q}
+                      abierta={abierta}
+                      onAbrir={(clave) => setAbierta((a) => (a === clave ? null : clave))}
+                      onTerritorio={onTerritorio}
+                      onVerTodas={(g) => {
+                        // Ver una por una: se acota la tabla a ese relato y se cambia de vista.
+                        setBusqueda(g.cuerpo.slice(0, 60));
+                        setVista("todas");
+                        setAbierta(null);
+                      }}
+                      orden={orden}
+                      onOrdenar={ordenar}
                     />
                   ) : (
                     <TablaTodas
-                      filas={listaTodas.slice(desde, desde + POR_PAGINA)}
+                      filas={todasOrdenadas.slice(desde, desde + porPagina)}
                       nombreDe={nombreDe}
                       lineaDe={datos.pnd ? (id) => lineaPorId.get(id ?? "") ?? null : null}
                       claveAnimacion={`${claveTabla}|${actual}`}
+                      busqueda={q}
+                      orden={orden}
+                      onOrdenar={ordenar}
                     />
                   )}
                   {total === 0 && (
@@ -534,34 +720,71 @@ export const Narrativas = memo(function Narrativas({
                 </div>
 
                 {total > 0 && (
-                  <div className="mt-3 flex items-center justify-between text-xs text-muted">
+                  <div className="vidrio sticky bottom-3 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2 text-xs text-muted">
                     <span>
                       <span className="cifra text-secondary">
-                        {formatoNumero(desde + 1)}–
-                        {formatoNumero(Math.min(desde + POR_PAGINA, total))}
+                        {formatoNumero(desde + 1)}–{formatoNumero(Math.min(desde + porPagina, total))}
                       </span>{" "}
                       de <span className="cifra text-secondary">{formatoNumero(total)}</span>{" "}
                       {vista === "agrupadas" ? "relatos" : "narrativas"}
+                      <label className="ml-3 hidden sm:inline">
+                        <span className="sr-only">Filas por página</span>
+                        <select
+                          value={porPagina}
+                          onChange={(e) => {
+                            setPorPagina(Number(e.target.value));
+                            setPagina({ contexto, n: 0 });
+                          }}
+                          className="cursor-pointer rounded-xs border border-control bg-surface-2 px-1.5 py-0.5 text-secondary"
+                        >
+                          {PAGINAS.map((n) => (
+                            <option key={n} value={n}>
+                              {n} por página
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                     </span>
-                    <div className="flex items-center gap-1">
-                      <BotonPagina
-                        onClick={() => setPagina({ contexto, n: actual - 1 })}
-                        disabled={actual === 0}
-                        etiqueta="Página anterior"
-                      >
-                        <ChevronLeft className="size-4" />
-                      </BotonPagina>
-                      <span className="cifra px-2 text-secondary">
-                        {actual + 1} / {paginas}
-                      </span>
-                      <BotonPagina
-                        onClick={() => setPagina({ contexto, n: actual + 1 })}
-                        disabled={actual >= paginas - 1}
-                        etiqueta="Página siguiente"
-                      >
-                        <ChevronRight className="size-4" />
-                      </BotonPagina>
-                    </div>
+                    {paginas > 1 && (
+                      <nav aria-label="Paginación" className="flex items-center gap-1">
+                        <BotonPagina
+                          onClick={() => irAPagina(actual - 1)}
+                          disabled={actual === 0}
+                          etiqueta="Página anterior"
+                        >
+                          <ChevronLeft className="size-4" />
+                        </BotonPagina>
+                        {/* Números, no solo flechas: paginar no debería obligar a adivinar. */}
+                        {numerosDePagina(actual, paginas).map((p, i) =>
+                          p === null ? (
+                            <span key={`hueco-${i}`} className="px-1 text-muted">
+                              …
+                            </span>
+                          ) : (
+                            <button
+                              key={p}
+                              onClick={() => irAPagina(p)}
+                              aria-current={p === actual ? "page" : undefined}
+                              aria-label={`Página ${p + 1}`}
+                              className={`cifra grid size-8 place-items-center rounded-sm text-xs transition-colors ${
+                                p === actual
+                                  ? "bg-action-primary font-bold text-action-primary-text"
+                                  : "text-secondary hover:bg-white/8 hover:text-primary"
+                              }`}
+                            >
+                              {p + 1}
+                            </button>
+                          ),
+                        )}
+                        <BotonPagina
+                          onClick={() => irAPagina(actual + 1)}
+                          disabled={actual >= paginas - 1}
+                          etiqueta="Página siguiente"
+                        >
+                          <ChevronRight className="size-4" />
+                        </BotonPagina>
+                      </nav>
+                    )}
                   </div>
                 )}
               </div>
@@ -580,29 +803,38 @@ export const Narrativas = memo(function Narrativas({
   );
 });
 
-function Pastilla({ valor, etiqueta }: { valor: number; etiqueta: string }) {
-  return (
-    <span className="rounded-full border border-subtle bg-white/[.03] px-3 py-1 text-secondary">
-      <span className="cifra font-bold text-primary">{formatoNumero(valor)}</span> {etiqueta}
-    </span>
-  );
-}
-
+/**
+ * La lectura de lo cualitativo. Todo sale de contar: cuánto pesa cada tema, qué relatos se
+ * repiten y qué palabras aparecen aquí más que en el país. Nada lo redacta un modelo.
+ *
+ * La redacción cambia con el tamaño de la muestra: con 12 narrativas no se puede decir «la
+ * conversación gira en torno a…» sin exagerar.
+ */
 function GeneralidadNarrativa({
   resumen,
   nombreTerritorio,
   nacional,
   ejePrincipal,
+  onTema,
+  onEje,
+  onBuscar,
+  onRelato,
 }: {
   resumen: Generalidad;
   nombreTerritorio: string;
   nacional: boolean;
-  ejePrincipal: { numero: number; nombre: string; porcentaje: number } | null;
+  ejePrincipal: { id: string; numero: number; nombre: string; porcentaje: number } | null;
+  onTema: (tema: string) => void;
+  onEje: (id: string) => void;
+  onBuscar: (termino: string) => void;
+  onRelato: (clave: string) => void;
 }) {
   const [t1, t2] = resumen.temas;
   const maxVeces = resumen.recurrentes[0]?.veces ?? 1;
   const concentracion =
     (resumen.recurrentes.reduce((suma, g) => suma + g.veces, 0) * 100) / resumen.total;
+  const confirmadas = Math.round((resumen.confirmadas * 100) / resumen.total);
+  const solidez = resumen.total >= 50 ? "alta" : resumen.total >= 30 ? "media" : "baja";
 
   return (
     <div className="grid gap-3 lg:grid-cols-[1.15fr_1fr]">
@@ -614,66 +846,107 @@ function GeneralidadNarrativa({
           </span>
           <p className="etiqueta text-accent">Generalidad narrativa</p>
         </div>
+
         <p className="font-display text-lg leading-snug font-bold text-primary sm:text-xl">
-          En {nombreTerritorio}{" "}
           {t1 ? (
             <>
-              la conversación gira sobre todo en torno a{" "}
-              <span className="text-accent">{temaDe(t1.tema).etiqueta}</span>
-              {t2 && (
+              {solidez === "alta"
+                ? `En ${nombreTerritorio} la conversación gira sobre todo en torno a `
+                : solidez === "media"
+                  ? `En ${nombreTerritorio} lo que más se repite tiene que ver con `
+                  : `Las pocas narrativas de ${nombreTerritorio} hablan sobre todo de `}
+              <button
+                onClick={() => onTema(t1.tema)}
+                className="foco-dentro text-accent underline decoration-dotted underline-offset-4 hover:decoration-solid"
+              >
+                {temaDe(t1.tema).etiqueta}
+              </button>
+              {t2 && solidez !== "baja" && (
                 <>
                   {/* "Agricultura y Desarrollo Rural, y Estadística": la coma evita la doble "y". */}
                   {temaDe(t1.tema).etiqueta.includes(" y ") ? "," : ""} y{" "}
-                  <span className="text-accent">{temaDe(t2.tema).etiqueta}</span>
+                  <button
+                    onClick={() => onTema(t2.tema)}
+                    className="foco-dentro text-accent underline decoration-dotted underline-offset-4 hover:decoration-solid"
+                  >
+                    {temaDe(t2.tema).etiqueta}
+                  </button>
                 </>
               )}
               .
             </>
           ) : (
-            <>las narrativas aún no tienen un tema clasificado.</>
+            <>Las narrativas de {nombreTerritorio} aún no tienen un tema clasificado.</>
           )}
         </p>
-        <p className="mt-3 text-sm leading-relaxed text-secondary">
-          {resumen.distintas <= 3 ? (
-            <>
-              Todo lo que se cuenta cabe en{" "}
-              <span className="cifra text-primary">{formatoNumero(resumen.distintas)}</span>{" "}
-              {resumen.distintas === 1 ? "relato" : "relatos"}
-            </>
-          ) : (
-            <>
-              Los 3 relatos más repetidos reúnen el{" "}
-              <span className="cifra text-primary">{Math.round(concentracion)}%</span> de las
-              narrativas
-            </>
-          )}
-          , y{" "}
-          <span className="cifra text-primary">
-            {Math.round((resumen.confirmadas * 100) / resumen.total)}%
-          </span>{" "}
-          fue confirmado por quien lo contó.
-          {ejePrincipal && (
-            <>
-              {" "}
-              Frente al Plan Nacional de Desarrollo, se conecta sobre todo con el eje{" "}
-              <span className="text-primary">
-                {ejePrincipal.numero} · {ejePrincipal.nombre}
-              </span>{" "}
-              (<span className="cifra">{Math.round(ejePrincipal.porcentaje)}%</span>).
-            </>
-          )}
-        </p>
+
+        {/* Tres cifras que sostienen la frase de arriba */}
+        <dl className="mt-4 grid grid-cols-3 gap-2">
+          {[
+            {
+              valor: formatoNumero(resumen.total),
+              pie: resumen.total === 1 ? "narrativa" : "narrativas",
+            },
+            {
+              valor:
+                resumen.distintas <= 3
+                  ? formatoNumero(resumen.distintas)
+                  : `${Math.round(concentracion)} %`,
+              pie:
+                resumen.distintas <= 3
+                  ? `${resumen.distintas === 1 ? "relato distinto" : "relatos distintos"}`
+                  : "en los 3 relatos más repetidos",
+            },
+            { valor: `${confirmadas} %`, pie: "confirmado por quien lo contó" },
+          ].map(({ valor, pie }) => (
+            <div key={pie} className="rounded-sm bg-white/[.04] px-2.5 py-2">
+              <dd className="cifra-display text-xl font-extrabold text-primary">{valor}</dd>
+              <dt className="mt-0.5 text-[11px] leading-tight text-muted">{pie}</dt>
+            </div>
+          ))}
+        </dl>
+
+        {resumen.distintivo && (
+          <p className="mt-3 text-sm leading-relaxed text-secondary">
+            Frente al país, aquí se habla{" "}
+            <span className="text-primary">
+              {resumen.distintivo.razon.toFixed(1).replace(".", ",")} veces más
+            </span>{" "}
+            de{" "}
+            <button
+              onClick={() => onTema(resumen.distintivo!.tema)}
+              className="foco-dentro text-accent underline decoration-dotted underline-offset-4"
+            >
+              {temaDe(resumen.distintivo.tema).etiqueta}
+            </button>
+            .
+          </p>
+        )}
+        {ejePrincipal && (
+          <p className="mt-2 text-sm leading-relaxed text-secondary">
+            Frente al Plan Nacional de Desarrollo, se conecta sobre todo con el eje{" "}
+            <button
+              onClick={() => onEje(ejePrincipal.id)}
+              className="foco-dentro text-primary underline decoration-dotted underline-offset-4"
+            >
+              {ejePrincipal.numero} · {ejePrincipal.nombre}
+            </button>{" "}
+            (<span className="cifra">{Math.round(ejePrincipal.porcentaje)} %</span>).
+          </p>
+        )}
 
         {/* Temas predominantes */}
         <div className="mt-4 space-y-2">
           {resumen.temas.map(({ tema, total, porcentaje }, i) => {
             const { etiqueta, corta, icono: Icono } = temaDe(tema);
             return (
-              <div
+              <button
                 key={tema}
-                className="grid grid-cols-[9rem_1fr_3.5rem] items-center gap-3 text-xs"
+                onClick={() => onTema(tema)}
+                aria-label={`Filtrar por ${etiqueta}: ${total} narrativas`}
+                className="foco-dentro grid w-full grid-cols-[9rem_1fr_3.5rem] items-center gap-3 rounded-sm px-1 py-0.5 text-xs transition-colors hover:bg-white/5"
               >
-                <span className="flex min-w-0 items-center gap-1.5 text-secondary" title={etiqueta}>
+                <span className="flex min-w-0 items-center gap-1.5 text-secondary">
                   <Icono className="size-3.5 shrink-0 text-accent" />
                   <span className="truncate">{corta}</span>
                 </span>
@@ -689,7 +962,7 @@ function GeneralidadNarrativa({
                   {formatoNumero(total)}
                   <span className="ml-1 text-muted">{Math.round(porcentaje)}%</span>
                 </span>
-              </div>
+              </button>
             );
           })}
           {resumen.sinClasificar > 0 && (
@@ -715,23 +988,29 @@ function GeneralidadNarrativa({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1 + i * 0.08, duration: 0.45, ease: suave }}
               >
-                <div className="flex gap-2.5">
-                  <Quote className="mt-0.5 size-3.5 shrink-0 text-accent" />
-                  <p className="text-sm leading-snug text-primary">{g.cuerpo}</p>
-                </div>
-                <div className="mt-1.5 ml-6 flex items-center gap-2">
-                  <span className="h-1 flex-1 overflow-hidden rounded-full bg-white/8">
-                    <motion.span
-                      className="block h-full rounded-full bg-gold-500/80"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(g.veces * 100) / maxVeces}%` }}
-                      transition={{ duration: 0.8, delay: 0.2 + i * 0.08, ease: suave }}
-                    />
+                <button
+                  onClick={() => onRelato(g.clave)}
+                  className="foco-dentro w-full rounded-sm px-1 py-0.5 text-left transition-colors hover:bg-white/5"
+                >
+                  <span className="flex gap-2.5">
+                    <Quote className="mt-0.5 size-3.5 shrink-0 text-accent" />
+                    <span className="text-sm leading-snug text-primary">{g.cuerpo}</span>
                   </span>
-                  <span className="cifra text-[11px] text-muted">
-                    {formatoNumero(g.veces)} {g.veces === 1 ? "vez" : "veces"}
+                  <span className="mt-1.5 ml-6 flex items-center gap-2">
+                    <span className="h-1 flex-1 overflow-hidden rounded-full bg-white/8">
+                      <motion.span
+                        className="block h-full rounded-full bg-gold-500/80"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(g.veces * 100) / maxVeces}%` }}
+                        transition={{ duration: 0.8, delay: 0.2 + i * 0.08, ease: suave }}
+                      />
+                    </span>
+                    <span className="cifra text-[11px] text-muted">
+                      {formatoNumero(g.veces)} {g.veces === 1 ? "vez" : "veces"} ·{" "}
+                      {Math.round((g.veces * 100) / resumen.total)} %
+                    </span>
                   </span>
-                </div>
+                </button>
               </motion.li>
             ))}
           </ol>
@@ -747,13 +1026,19 @@ function GeneralidadNarrativa({
             </p>
             <div className="flex flex-wrap gap-1.5">
               {resumen.terminos.map((t, i) => (
-                <motion.span
+                <motion.button
                   key={t.termino}
                   initial={{ opacity: 0, scale: 0.85 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.15 + i * 0.04 }}
-                  title={`Aparece en ${t.veces} narrativas`}
-                  className="rounded-full border px-2.5 py-1 text-xs"
+                  onClick={() => onBuscar(t.termino)}
+                  aria-label={`Buscar narrativas que mencionan «${t.termino}»`}
+                  title={
+                    nacional
+                      ? `En ${t.relatos} relatos distintos`
+                      : `En ${t.relatos} relatos distintos · ${t.razon.toFixed(1).replace(".", ",")} veces más que en el país`
+                  }
+                  className="foco-dentro rounded-full border px-2.5 py-1 text-xs transition-transform hover:-translate-y-px"
                   style={{
                     borderColor: `rgba(255,200,0,${0.15 + t.peso * 0.45})`,
                     background: `rgba(255,200,0,${0.04 + t.peso * 0.14})`,
@@ -762,10 +1047,16 @@ function GeneralidadNarrativa({
                   }}
                 >
                   {t.termino}
-                  <span className="cifra ml-1.5 text-[10px] text-muted">{t.veces}</span>
-                </motion.span>
+                  <span className="cifra ml-1.5 text-[11px] text-muted">
+                    {nacional ? t.veces : `×${t.razon.toFixed(1).replace(".", ",")}`}
+                  </span>
+                </motion.button>
               ))}
             </div>
+            <p className="mt-2.5 text-[11px] leading-relaxed text-muted">
+              Se cuentan por relato distinto, no por narrativa
+              {nacional ? "." : `, y se comparan con el resto del país.`}
+            </p>
           </div>
         )}
       </div>
@@ -775,6 +1066,49 @@ function GeneralidadNarrativa({
 
 const cabecera = "etiqueta bg-surface-1 px-3 py-2.5 text-left text-[11px] font-bold";
 const celda = "px-3 py-3 align-top";
+
+/** Páginas a mostrar alrededor de la actual; `null` es un hueco «…». */
+function numerosDePagina(actual: number, total: number): (number | null)[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i);
+  const cerca = [actual - 1, actual, actual + 1].filter((p) => p > 0 && p < total - 1);
+  const paginas = [0, ...cerca, total - 1];
+  const salida: (number | null)[] = [];
+  let previa = -1;
+  for (const p of paginas) {
+    if (p - previa > 1) salida.push(null);
+    salida.push(p);
+    previa = p;
+  }
+  return salida;
+}
+
+/**
+ * Marca las coincidencias de la búsqueda.
+ *
+ * Se busca sobre el texto sin tildes y se corta sobre el original: para el español ambas cadenas
+ * tienen la misma longitud (una vocal acentuada sigue ocupando un carácter). Si alguna rareza
+ * rompiera esa correspondencia, se muestra el texto tal cual antes que descuadrar el resaltado.
+ */
+function Resaltado({ texto, q }: { texto: string; q: string }) {
+  if (!q) return <>{texto}</>;
+  const plano = normalizar(texto);
+  if (plano.length !== texto.length) return <>{texto}</>;
+  const partes: React.ReactNode[] = [];
+  let desde = 0;
+  let i = plano.indexOf(q);
+  while (i >= 0) {
+    if (i > desde) partes.push(texto.slice(desde, i));
+    partes.push(
+      <mark key={i} className="rounded-xs bg-[rgba(255,200,0,.28)] text-primary">
+        {texto.slice(i, i + q.length)}
+      </mark>,
+    );
+    desde = i + q.length;
+    i = plano.indexOf(q, desde);
+  }
+  partes.push(texto.slice(desde));
+  return <>{partes}</>;
+}
 
 function ChipTema({ tema }: { tema: string | null }) {
   const { etiqueta, corta, icono: Icono } = temaDe(tema);
@@ -791,25 +1125,40 @@ function ChipTema({ tema }: { tema: string | null }) {
   );
 }
 
+/** Dónde se cuenta: el alcance primero y el sitio que más lo repite debajo. */
 function Lugares({
-  municipios,
+  conteo,
+  departamentos,
   nombreDe,
 }: {
-  municipios: string[];
+  conteo: [string, number][];
+  departamentos: number;
   nombreDe: (c: string) => string;
 }) {
-  if (!municipios.length)
+  if (!conteo.length)
     return <span className="text-xs text-muted italic">Sin ubicación confirmada</span>;
-  const [primero, ...resto] = municipios;
+  const [principal, veces] = conteo[0];
   return (
     <span className="flex items-start gap-1.5 text-sm">
       <MapPin className="mt-0.5 size-3.5 shrink-0 text-muted" />
-      <span>
-        <span className="text-primary">{nombreDe(primero)}</span>
+      <span className="min-w-0">
+        {conteo.length > 1 ? (
+          <span className="text-primary">
+            <span className="cifra">{conteo.length}</span> municipios
+            {departamentos > 1 && (
+              <>
+                {" · "}
+                <span className="cifra">{departamentos}</span> departamentos
+              </>
+            )}
+          </span>
+        ) : (
+          <span className="text-primary">{nombreDe(principal)}</span>
+        )}
         <span className="block text-xs text-muted">
-          {nombreDe(primero.slice(0, 2))}
-          {resto.length > 0 &&
-            ` · +${resto.length} ${resto.length === 1 ? "municipio" : "municipios"}`}
+          {conteo.length > 1
+            ? `Sobre todo en ${nombreDe(principal)} (${veces})`
+            : nombreDe(principal.slice(0, 2))}
         </span>
       </span>
     </span>
@@ -843,7 +1192,7 @@ function MetaRelato({
               claves?.length ? `${linea.nombre} · coincide por: ${claves.join(", ")}` : linea.nombre
             }
           >
-            <span className="cifra shrink-0 rounded-xs bg-[rgba(78,139,224,.14)] px-1.5 text-[10px] text-info">
+            <span className="cifra shrink-0 rounded-xs bg-[rgba(78,139,224,.14)] px-1.5 text-[11px] text-info">
               Eje {linea.eje}
             </span>
             <span className="max-w-[18rem] truncate">{linea.nombre}</span>
@@ -855,13 +1204,18 @@ function MetaRelato({
   );
 }
 
-function FilaAnimada({ i, children }: { i: number; children: React.ReactNode }) {
+function FilaAnimada({
+  i,
+  children,
+  ...resto
+}: { i: number; children: React.ReactNode } & React.ComponentProps<typeof motion.tr>) {
   return (
     <motion.tr
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: i * 0.03, duration: 0.35, ease: suave }}
       className="border-t border-subtle transition-colors hover:bg-white/[.035]"
+      {...resto}
     >
       {children}
     </motion.tr>
@@ -899,75 +1253,180 @@ function Veces({ veces, maximo, i }: { veces: number; maximo: number; i: number 
   );
 }
 
+type Ordenamiento = { campo: Orden; dir: "asc" | "desc" };
+
+/** Cabecera que ordena. El `aria-sort` es lo que anuncia el lector de pantalla. */
+function Ordenable({
+  campo,
+  orden,
+  onOrdenar,
+  children,
+  className = "",
+}: {
+  campo: Orden;
+  orden: Ordenamiento;
+  onOrdenar: (c: Orden) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const activo = orden.campo === campo;
+  return (
+    <th
+      scope="col"
+      aria-sort={activo ? (orden.dir === "desc" ? "descending" : "ascending") : "none"}
+      className={`${cabecera} ${className}`}
+    >
+      <button
+        onClick={() => onOrdenar(campo)}
+        className="foco-dentro flex items-center gap-1 transition-colors hover:text-accent"
+      >
+        {children}
+        <ArrowDownUp className={`size-3 ${activo ? "text-accent" : "text-muted opacity-50"}`} />
+      </button>
+    </th>
+  );
+}
+
+/** Lo que hay detrás de un relato agrupado: dónde, cómo llegó y con qué palabras entró al Plan. */
+function DetalleGrupo({
+  grupo,
+  nombreDe,
+  onTerritorio,
+  onVerTodas,
+}: {
+  grupo: GrupoNarrativo;
+  nombreDe: (c: string) => string;
+  onTerritorio: (codigo: string) => void;
+  onVerTodas: () => void;
+}) {
+  return (
+    <div className="grid gap-4 border-t border-dashed border-default bg-[rgba(4,12,29,.35)] p-3 sm:grid-cols-3 sm:p-4">
+      <div className="sm:col-span-1">
+        <p className="etiqueta mb-1.5">Dónde se cuenta</p>
+        {grupo.conteoMunicipios.length === 0 ? (
+          <p className="text-xs text-muted">Sin ubicación confirmada.</p>
+        ) : (
+          <ul className="space-y-1 text-xs">
+            {grupo.conteoMunicipios.slice(0, 5).map(([codigo, n]) => (
+              <li key={codigo}>
+                <button
+                  onClick={() => onTerritorio(codigo)}
+                  className="foco-dentro flex w-full items-baseline justify-between gap-2 rounded-xs px-1 py-0.5 text-left hover:bg-white/5"
+                >
+                  <span className="truncate text-secondary hover:text-primary">
+                    {nombreDe(codigo)}
+                  </span>
+                  <span className="cifra shrink-0 text-muted">{n}</span>
+                </button>
+              </li>
+            ))}
+            {grupo.conteoMunicipios.length > 5 && (
+              <li className="px-1 text-muted">y {grupo.conteoMunicipios.length - 5} municipios más</li>
+            )}
+          </ul>
+        )}
+      </div>
+      <div>
+        <p className="etiqueta mb-1.5">Cómo llegó</p>
+        <ul className="space-y-1 text-xs text-secondary">
+          {grupo.canales.map((c) => (
+            <li key={c} className="flex items-center gap-1.5">
+              <span className="size-2 rounded-full" style={{ background: CANALES[c].color }} />
+              {CANALES[c].etiqueta}
+            </li>
+          ))}
+          <li className="text-muted">
+            Entre {formatoFecha(grupo.primera)} y {formatoFecha(grupo.ultima)}
+          </li>
+          {grupo.confirmadas > 0 && (
+            <li className="flex items-center gap-1 text-info">
+              <BadgeCheck className="size-3" /> {formatoNumero(grupo.confirmadas)} confirmadas
+            </li>
+          )}
+        </ul>
+      </div>
+      <div>
+        {grupo.claves.length > 0 && (
+          <>
+            <p className="etiqueta mb-1.5">Entró al Plan por</p>
+            <p className="flex flex-wrap gap-1">
+              {grupo.claves.slice(0, 6).map((c) => (
+                <span key={c} className="rounded-xs bg-[rgba(78,139,224,.14)] px-1.5 py-0.5 text-xs text-info">
+                  {c}
+                </span>
+              ))}
+            </p>
+          </>
+        )}
+        {grupo.veces > 1 && (
+          <button
+            onClick={onVerTodas}
+            className="mt-2 text-xs text-link hover:underline"
+          >
+            Ver las {formatoNumero(grupo.veces)} una por una
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TablaAgrupada({
   grupos,
   maximo,
   nombreDe,
   lineaDe,
   claveAnimacion,
+  busqueda,
+  abierta,
+  onAbrir,
+  onTerritorio,
+  onVerTodas,
+  orden,
+  onOrdenar,
 }: {
   grupos: GrupoNarrativo[];
   maximo: number;
   nombreDe: (c: string) => string;
   lineaDe: BuscarLinea | null;
   claveAnimacion: string;
+  busqueda: string;
+  abierta: string | null;
+  onAbrir: (clave: string) => void;
+  onTerritorio: (codigo: string) => void;
+  onVerTodas: (grupo: GrupoNarrativo) => void;
+  orden: Ordenamiento;
+  onOrdenar: (c: Orden) => void;
 }) {
-  // Un relato abierto a la vez: deja ver todos los lugares donde se cuenta.
-  const [abierto, setAbierto] = useState<string | null>(null);
   if (!grupos.length) return null;
   const relato = (g: GrupoNarrativo) => (
     <>
-      <p className="text-sm leading-snug text-primary">{g.cuerpo}</p>
-      <MetaRelato
-        temas={g.temas.slice(0, 2).map((t) => (t === "sin_tema" ? null : t))}
-        linea={lineaDe?.(g.pnd) ?? null}
-        conPlan={lineaDe !== null}
-      />
-      {g.confirmadas > 0 && (
-        <p className="mt-1.5 flex items-center gap-1 text-[11px] text-info">
-          <BadgeCheck className="size-3" /> {formatoNumero(g.confirmadas)}{" "}
-          {g.confirmadas === 1 ? "confirmada" : "confirmadas"}
-        </p>
-      )}
-      {g.municipios.length > 1 && (
-        <>
-          <button
-            onClick={() => setAbierto(abierto === g.clave ? null : g.clave)}
-            aria-expanded={abierto === g.clave}
-            className="mt-1.5 flex items-center gap-1 text-[11px] text-link hover:underline"
-          >
-            <ChevronRight
-              className={`size-3 transition-transform ${abierto === g.clave ? "rotate-90" : ""}`}
-            />
-            {abierto === g.clave ? "Ocultar lugares" : `Ver los ${g.municipios.length} municipios`}
-          </button>
-          {abierto === g.clave && (
-            <motion.ul
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-              className="mt-2 flex flex-wrap gap-1.5"
-            >
-              {g.municipios.map((m) => (
-                <li
-                  key={m}
-                  className="rounded-xs border border-subtle bg-white/[.03] px-2 py-0.5 text-xs text-secondary"
-                >
-                  {nombreDe(m)}
-                  <span className="ml-1 text-muted">{nombreDe(m.slice(0, 2))}</span>
-                </li>
-              ))}
-            </motion.ul>
-          )}
-        </>
-      )}
+      <p className="flex items-start gap-1.5 text-sm leading-snug text-primary">
+        <ChevronRight
+          className={`mt-0.5 size-3.5 shrink-0 text-muted transition-transform ${
+            abierta === g.clave ? "rotate-90 text-accent" : ""
+          }`}
+        />
+        <span>
+          <Resaltado texto={g.cuerpo} q={busqueda} />
+        </span>
+      </p>
+      <span className="block pl-5">
+        <MetaRelato
+          temas={g.temas.slice(0, 2).map((t) => (t === "sin_tema" ? null : t))}
+          linea={lineaDe?.(g.pnd) ?? null}
+          conPlan={lineaDe !== null}
+          claves={g.claves}
+        />
+      </span>
     </>
   );
+
   return (
     <>
       <table className="hidden w-full border-collapse @[44rem]:table">
         <caption className="sr-only">
-          Relatos agrupados por lo que cuentan, del más al menos repetido
+          Relatos agrupados por lo que cuentan. Cada fila se abre con más detalle.
         </caption>
         <thead>
           <tr>
@@ -977,37 +1436,87 @@ function TablaAgrupada({
             <th scope="col" className={`${cabecera} w-48`}>
               Dónde se cuenta
             </th>
-            <th scope="col" className={`${cabecera} w-36`}>
+            <Ordenable campo="veces" orden={orden} onOrdenar={onOrdenar} className="w-36">
               Veces
-            </th>
-            <th scope="col" className={`${cabecera} w-28 text-right`}>
+            </Ordenable>
+            <Ordenable campo="fecha" orden={orden} onOrdenar={onOrdenar} className="w-28">
               Último
-            </th>
+            </Ordenable>
           </tr>
         </thead>
         <tbody key={claveAnimacion}>
           {grupos.map((g, i) => (
-            <FilaAnimada key={g.clave} i={i}>
-              <td className={celda}>{relato(g)}</td>
-              <td className={celda}>
-                <Lugares municipios={g.municipios} nombreDe={nombreDe} />
-              </td>
-              <td className={celda}>
-                <Veces veces={g.veces} maximo={maximo} i={i} />
-              </td>
-              <td className={`${celda} cifra text-right text-xs whitespace-nowrap text-secondary`}>
-                {formatoFecha(g.ultima)}
-              </td>
-            </FilaAnimada>
+            <Fragment key={g.clave}>
+              <FilaAnimada
+                i={i}
+                tabIndex={0}
+                role="button"
+                aria-expanded={abierta === g.clave}
+                onClick={() => onAbrir(g.clave)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  onAbrir(g.clave);
+                }}
+                className={`foco-dentro cursor-pointer border-t border-subtle transition-colors hover:bg-white/[.035] ${
+                  abierta === g.clave ? "bg-white/[.04]" : ""
+                }`}
+              >
+                <td className={celda}>{relato(g)}</td>
+                <td className={celda}>
+                  <Lugares
+                    conteo={g.conteoMunicipios}
+                    departamentos={g.departamentos.length}
+                    nombreDe={nombreDe}
+                  />
+                </td>
+                <td className={celda}>
+                  <Veces veces={g.veces} maximo={maximo} i={i} />
+                </td>
+                <td className={`${celda} cifra text-right text-xs whitespace-nowrap text-secondary`}>
+                  {formatoFecha(g.ultima)}
+                </td>
+              </FilaAnimada>
+              {/* Siempre montada: una fila que aparece y desaparece rompería el borde de la tabla. */}
+              <tr>
+                <td colSpan={4} className="border-0 p-0">
+                  <AnimatePresence initial={false}>
+                    {abierta === g.clave && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: suave }}
+                        className="overflow-clip"
+                      >
+                        <DetalleGrupo
+                          grupo={g}
+                          nombreDe={nombreDe}
+                          onTerritorio={onTerritorio}
+                          onVerTodas={() => onVerTodas(g)}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </td>
+              </tr>
+            </Fragment>
           ))}
         </tbody>
       </table>
+
       <ul key={`t-${claveAnimacion}`} className="@[44rem]:hidden">
         {grupos.map((g, i) => (
           <TarjetaAnimada key={g.clave} i={i}>
-            {relato(g)}
+            <button onClick={() => onAbrir(g.clave)} className="w-full text-left">
+              {relato(g)}
+            </button>
             <div className="mt-3 grid grid-cols-[minmax(0,1fr)_7rem] items-end gap-3">
-              <Lugares municipios={g.municipios} nombreDe={nombreDe} />
+              <Lugares
+                conteo={g.conteoMunicipios}
+                departamentos={g.departamentos.length}
+                nombreDe={nombreDe}
+              />
               <div>
                 <Veces veces={g.veces} maximo={maximo} i={i} />
                 <p className="cifra mt-1 text-right text-[11px] text-muted">
@@ -1015,6 +1524,26 @@ function TablaAgrupada({
                 </p>
               </div>
             </div>
+            <AnimatePresence initial={false}>
+              {abierta === g.clave && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.25, ease: suave }}
+                  className="overflow-clip"
+                >
+                  <div className="mt-3 -mx-3 -mb-3">
+                    <DetalleGrupo
+                      grupo={g}
+                      nombreDe={nombreDe}
+                      onTerritorio={onTerritorio}
+                      onVerTodas={() => onVerTodas(g)}
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </TarjetaAnimada>
         ))}
       </ul>
@@ -1053,16 +1582,26 @@ function TablaTodas({
   nombreDe,
   lineaDe,
   claveAnimacion,
+  busqueda,
+  orden,
+  onOrdenar,
 }: {
   filas: FilaNarrativa[];
   nombreDe: (c: string) => string;
   lineaDe: BuscarLinea | null;
   claveAnimacion: string;
+  busqueda: string;
+  orden: Ordenamiento;
+  onOrdenar: (c: Orden) => void;
 }) {
   if (!filas.length) return null;
+  const lugaresDe = (f: FilaNarrativa): [string, number][] =>
+    f.aporte.municipios.map((m) => [m, 1]);
   const relato = (f: FilaNarrativa) => (
     <>
-      <p className="text-sm leading-snug text-primary">{f.cuerpo}</p>
+      <p className="text-sm leading-snug text-primary">
+        <Resaltado texto={f.cuerpo} q={busqueda} />
+      </p>
       <MetaRelato
         temas={[f.aporte.tema]}
         linea={lineaDe?.(f.pnd?.linea ?? null) ?? null}
@@ -1079,9 +1618,7 @@ function TablaTodas({
   return (
     <>
       <table className="hidden w-full border-collapse @[44rem]:table">
-        <caption className="sr-only">
-          Todas las narrativas, de la más reciente a la más antigua
-        </caption>
+        <caption className="sr-only">Todas las narrativas, una por aporte.</caption>
         <thead>
           <tr>
             <th scope="col" className={cabecera}>
@@ -1093,9 +1630,9 @@ function TablaTodas({
             <th scope="col" className={`${cabecera} w-32`}>
               Canal y estado
             </th>
-            <th scope="col" className={`${cabecera} w-28 text-right`}>
+            <Ordenable campo="fecha" orden={orden} onOrdenar={onOrdenar} className="w-28">
               Fecha
-            </th>
+            </Ordenable>
           </tr>
         </thead>
         <tbody key={claveAnimacion}>
@@ -1103,7 +1640,11 @@ function TablaTodas({
             <FilaAnimada key={f.aporteId} i={i}>
               <td className={celda}>{relato(f)}</td>
               <td className={celda}>
-                <Lugares municipios={f.aporte.municipios} nombreDe={nombreDe} />
+                <Lugares
+                  conteo={lugaresDe(f)}
+                  departamentos={new Set(f.aporte.municipios.map((m) => m.slice(0, 2))).size}
+                  nombreDe={nombreDe}
+                />
               </td>
               <td className={celda}>
                 <CanalYEstado fila={f} />
@@ -1120,7 +1661,11 @@ function TablaTodas({
           <TarjetaAnimada key={f.aporteId} i={i}>
             {relato(f)}
             <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
-              <Lugares municipios={f.aporte.municipios} nombreDe={nombreDe} />
+              <Lugares
+                conteo={lugaresDe(f)}
+                departamentos={new Set(f.aporte.municipios.map((m) => m.slice(0, 2))).size}
+                nombreDe={nombreDe}
+              />
               <div className="flex flex-col items-end gap-1">
                 <CanalYEstado fila={f} />
                 <p className="cifra text-[11px] text-muted">{formatoFecha(f.aporte.fecha)}</p>

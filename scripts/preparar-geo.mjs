@@ -11,6 +11,7 @@
 // Los originales no se tocan. Uso: node scripts/preparar-geo.mjs
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 const raiz = new URL("..", import.meta.url).pathname;
@@ -98,11 +99,25 @@ const cajas = {};
 for (const [codigo, { pols }] of deptos.porCodigo) cajas[codigo] = caja(pols);
 
 mkdirSync(join(raiz, "public/data/geo"), { recursive: true });
-writeFileSync(join(raiz, "public/data/geo/departamentos.json"), JSON.stringify(deptos.geojson));
-writeFileSync(join(raiz, "public/data/geo/municipios.json"), JSON.stringify(mpios.geojson));
-writeFileSync(join(raiz, "public/data/geo/paises.json"), JSON.stringify(paises.geojson));
+const salidas = {
+  "public/data/geo/departamentos.json": JSON.stringify(deptos.geojson),
+  "public/data/geo/municipios.json": JSON.stringify(mpios.geojson),
+  "public/data/geo/paises.json": JSON.stringify(paises.geojson),
+};
+for (const [ruta, contenido] of Object.entries(salidas)) writeFileSync(join(raiz, ruta), contenido);
 writeFileSync(join(raiz, "src/lib/geo/cajas.json"), JSON.stringify(cajas, null, 2) + "\n");
 
+// Huella del contenido: el navegador puede cachear la cartografía para siempre porque, cuando
+// cambia, cambia la URL. No sirve `catalogoVersion`: es de la base, no de estos archivos.
+const version = createHash("sha256")
+  .update(Object.values(salidas).join(""))
+  .digest("hex")
+  .slice(0, 10);
+writeFileSync(
+  join(raiz, "src/lib/geo/version.json"),
+  `${JSON.stringify({ version }, null, 2)}\n`,
+);
+
 console.log(
-  `departamentos: ${deptos.porCodigo.size} · municipios: ${mpios.porCodigo.size} · cajas: ${Object.keys(cajas).length} · países: ${paises.porCodigo.size}`,
+  `departamentos: ${deptos.porCodigo.size} · municipios: ${mpios.porCodigo.size} · cajas: ${Object.keys(cajas).length} · países: ${paises.porCodigo.size} · versión: ${version}`,
 );

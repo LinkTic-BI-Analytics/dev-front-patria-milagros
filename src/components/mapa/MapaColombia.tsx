@@ -5,8 +5,9 @@ import type { Feature, FeatureCollection, Geometry } from "geojson";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useSpring, type MotionValue } from "motion/react";
-import { Globe, MapPinOff, MousePointerClick, Pause, Play } from "lucide-react";
+import { Box, Globe, Layers, MapPinOff, MousePointerClick, Pause, Play } from "lucide-react";
 import cajas from "@/lib/geo/cajas.json";
+import { version as versionGeo } from "@/lib/geo/version.json";
 import {
   METRICAS,
   RAMPA_MAPA,
@@ -46,8 +47,15 @@ type Props = {
   onSeleccionar: (codigo: string | null) => void;
   onEntrar: (dpto: string) => void;
   onSalir: () => void;
+  onModo3d: () => void;
   /** Hay algo encima del mapa (el modal de ejes): el globo no gira a espaldas de nadie. */
   pausado?: boolean;
+  /** Alto real de los controles de arriba y de la franja de abajo, medido por el Tablero. */
+  margenes?: { top: number; bottom: number };
+  /** Cuántos países y departamentos hay en el catálogo, para la leyenda y la miga. */
+  totalPaises?: number;
+  /** Territorio señalado desde fuera (el ranking del panel): se ilumina en el mapa. */
+  resaltado?: string | null;
   /** Lo que acompaña a la leyenda en la franja inferior (pista de uso, accesos). */
   pie?: React.ReactNode;
 };
@@ -65,8 +73,10 @@ const mapaListo = (map: mapboxgl.Map | null): map is mapboxgl.Map =>
 
 /** Encuadre del globo: centro que deja a Colombia a la vista y franja libre bajo los controles. */
 const CENTRO_MUNDO: [number, number] = [-62, 8];
-const libreGlobo = (ancho: number): LibreGlobo =>
-  ancho < 640 ? { top: 120, bottom: 8 } : { top: 64, bottom: 8 };
+const libreGlobo = (margenes: Margenes): LibreGlobo => ({
+  top: margenes.top + 8,
+  bottom: 8,
+});
 const rellenoGlobo = (libre: LibreGlobo) => ({
   top: libre.top,
   bottom: libre.bottom,
@@ -83,16 +93,57 @@ const COLOMBIA: mapboxgl.LngLatBoundsLike = [
   [-79.1, -4.25],
   [-66.85, 12.5],
 ];
-function relleno(tamano: { width: number; height: number }) {
-  const compacto = tamano.width < 640;
-  return compacto
-    ? { top: 120, bottom: 70, left: 20, right: 20 }
-    : { top: 72, bottom: 24, left: 40, right: 40 };
+type Margenes = { top: number; bottom: number };
+const MARGENES_BASE: Margenes = { top: 72, bottom: 56 };
+
+/**
+ * Padding del encuadre. Sale de lo que miden los controles, no de números fijos: al añadir un
+ * filtro la barra crece una fila y «La Guajira» quedaba debajo de los chips.
+ */
+function relleno(tamano: { width: number; height: number }, margenes: Margenes = MARGENES_BASE) {
+  const lado = tamano.width < 640 ? 20 : 40;
+  return {
+    top: margenes.top + 12,
+    bottom: Math.max(24, margenes.bottom + 12),
+    left: lado,
+    right: lado,
+  };
+}
+
+/** Vuela al territorio vigente con el padding que dejan los controles. */
+function encuadrar(
+  map: mapboxgl.Map,
+  {
+    departamento,
+    modo3d,
+    margenes,
+    duracion,
+  }: { departamento: string | null; modo3d: boolean; margenes?: Margenes; duracion: number },
+) {
+  const caja = departamento ? (cajas as Record<string, number[]>)[departamento] : null;
+  map.fitBounds(
+    caja
+      ? [
+          [caja[0], caja[1]],
+          [caja[2], caja[3]],
+        ]
+      : COLOMBIA,
+    {
+      padding: relleno(map.getContainer().getBoundingClientRect(), margenes),
+      duration: reducirMovimiento() ? 0 : duracion,
+      pitch: modo3d ? 52 : 0,
+      bearing: modo3d ? -14 : 0,
+      essential: true,
+      maxZoom: 9.5,
+    },
+  );
 }
 
 /** Viste el estilo base de Mapbox con el navy de la marca y apaga lo que distrae. */
+const CAPAS_ETIQUETA = ["country-label", "continent-label", "water-point-label"];
+
 function vestirMapaBase(map: mapboxgl.Map) {
-  const visibles = new Set(["country-label", "continent-label", "water-point-label"]);
+  const visibles = new Set(CAPAS_ETIQUETA);
   for (const capa of map.getStyle()?.layers ?? []) {
     const { id, type } = capa;
     try {
@@ -106,6 +157,9 @@ function vestirMapaBase(map: mapboxgl.Map) {
       else if (visibles.has(id)) {
         map.setPaintProperty(id, "text-color", "rgba(237,241,247,0.3)");
         map.setPaintProperty(id, "text-halo-color", "#06142A");
+        // El tablero está en español: «Brasil», no «Brazil». El estilo trae `name_es`; si una
+        // capa no lo tuviera, `coalesce` deja el nombre original.
+        map.setLayoutProperty(id, "text-field", exp(["coalesce", ["get", "name_es"], ["get", "name"]]));
       } else map.setLayoutProperty(id, "visibility", "none");
     } catch {
       // Una capa del estilo que no admite la propiedad: se deja como viene.
@@ -189,17 +243,21 @@ function agregarCapas(map: mapboxgl.Map, dep: FC, mun: FC) {
     },
   });
 
-  // Extrusiones (modo 3D)
+  // Extrusiones (modo 3D). Nacen aplastadas: al encenderlas crecen desde el suelo mientras la
+  // cámara se inclina, en vez de aparecer de golpe a su altura final.
+  const colorTorre = exp(["case", estado("hover"), "#FFE58A", colorPorT]);
   map.addLayer({
     id: "dep-3d",
     type: "fill-extrusion",
     source: "departamentos",
     layout: { visibility: "none" },
     paint: {
-      "fill-extrusion-color": colorPorT,
+      "fill-extrusion-color": colorTorre,
       "fill-extrusion-height": exp(["*", ["coalesce", ["feature-state", "h"], 0], 300000]),
       "fill-extrusion-opacity": 0.92,
       "fill-extrusion-vertical-gradient": true,
+      "fill-extrusion-vertical-scale": 0,
+      "fill-extrusion-vertical-scale-transition": { duration: 900, delay: 250 },
     },
   });
   map.addLayer({
@@ -209,12 +267,33 @@ function agregarCapas(map: mapboxgl.Map, dep: FC, mun: FC) {
     filter: ninguno,
     layout: { visibility: "none" },
     paint: {
-      "fill-extrusion-color": colorPorT,
+      "fill-extrusion-color": colorTorre,
       "fill-extrusion-height": exp(["*", ["coalesce", ["feature-state", "h"], 0], 50000]),
       "fill-extrusion-opacity": 0.92,
       "fill-extrusion-vertical-gradient": true,
+      "fill-extrusion-vertical-scale": 0,
+      "fill-extrusion-vertical-scale-transition": { duration: 900, delay: 250 },
     },
   });
+
+  // Velo de relevo: las propiedades con `feature-state` no transicionan, así que un cambio de
+  // métrica salta de color. Estas capas son constantes, sí transicionan, y cubren el salto.
+  for (const [prefijo, fuente, filtro] of [
+    ["dep", "departamentos", undefined],
+    ["mun", "municipios", ninguno],
+  ] as const) {
+    map.addLayer({
+      id: `${prefijo}-velo`,
+      type: "fill",
+      source: fuente,
+      ...(filtro ? { filter: filtro } : {}),
+      paint: {
+        "fill-color": "#081733",
+        "fill-opacity": 0,
+        "fill-opacity-transition": { duration: 140 },
+      },
+    });
+  }
 
   // Resplandor y contorno de hover / selección
   for (const [fuente, prefijo, filtro] of [
@@ -303,7 +382,12 @@ export default function MapaColombia(props: Props) {
   const mapaRef = useRef<mapboxgl.Map | null>(null);
   const geoRef = useRef<{ dep: FC; mun: FC; paises: MapaPaises } | null>(null);
   const giroRef = useRef<ReturnType<typeof crearGiro> | null>(null);
-  const zoomManual = useRef(false);
+  // Alguien movió la cámara a mano: el reencuadre automático deja de mandar hasta que se cambie
+  // de nivel, de ámbito o de vista.
+  const camaraManual = useRef(false);
+  const pintadoAlguna = useRef(false);
+  const introRef = useRef(false);
+  const margenesPrevios = useRef(MARGENES_BASE);
   const [paises, setPaises] = useState<Map<string, PropsPais>>(new Map());
   const ultimo = useRef(props);
   const velo = useRef<HTMLDivElement>(null);
@@ -321,10 +405,28 @@ export default function MapaColombia(props: Props) {
   const yTooltip = useSpring(yCursor, RESORTE.tooltip);
   const tooltip = useRef({ xCursor, yCursor, xTooltip, yTooltip });
   const [giroPausado, setGiroPausado] = useState(false);
+  // Las pistas de uso se dicen y se apartan: vuelven con el cursor o el foco sobre la franja.
+  const [tecladoEnMapa, setTecladoEnMapa] = useState(false);
 
   useEffect(() => {
     ultimo.current = props;
   });
+
+  // Las pistas se dicen y se apartan: aparecen al aterrizar y en cada cambio de nivel, y a los
+  // 8 s se quitan de en medio. Vuelven mientras el cursor o el foco estén sobre la franja.
+  // El «mostrar» se ajusta al renderizar (patrón de estado derivado de props), no en un efecto:
+  // así no hay un render de más por cada cambio de territorio.
+  const claveNivel = `${props.ambito}|${props.departamento}|${introTerminada}`;
+  const [pistas, setPistas] = useState({ clave: claveNivel, ver: false, fijas: false });
+  if (pistas.clave !== claveNivel)
+    setPistas({ clave: claveNivel, ver: introTerminada, fijas: false });
+  useEffect(() => {
+    if (!pistas.ver || pistas.fijas) return;
+    const reloj = setTimeout(() => setPistas((p) => ({ ...p, ver: false })), 8000);
+    return () => clearTimeout(reloj);
+  }, [pistas]);
+  const asomarPistas = (fijar: boolean) =>
+    setPistas((p) => ({ ...p, ver: fijar, fijas: fijar }));
 
   // Montaje: mapa, capas, intro e interacción.
   useEffect(() => {
@@ -355,18 +457,20 @@ export default function MapaColombia(props: Props) {
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "bottom-right");
 
-    const traer = <T,>(ruta: string) =>
-      fetch(ruta).then((r) => {
-        if (!r.ok) throw new Error(`${ruta}: ${r.status}`);
+    // La versión va en la URL: el navegador puede cachear la cartografía un año y, cuando se
+    // regenera, pide la nueva sola.
+    const traer = <T,>(nombre: string) =>
+      fetch(`/data/geo/${nombre}.json?v=${versionGeo}`).then((r) => {
+        if (!r.ok) throw new Error(`${nombre}: ${r.status}`);
         return r.json() as Promise<T>;
       });
     const geo = Promise.all([
-      traer<FC>("/data/geo/departamentos.json"),
-      traer<MapaPaises>("/data/geo/paises.json"),
+      traer<FC>("departamentos"),
+      traer<MapaPaises>("paises"),
     ]);
     // Los municipios pesan 2 MB y no hacen falta hasta entrar a un departamento: bajan en
     // paralelo, pero la entrada no los espera.
-    const geoMunicipios = traer<FC>("/data/geo/municipios.json");
+    const geoMunicipios = traer<FC>("municipios");
     geo.catch(() => !cancelado && setFallo(true));
     geoMunicipios.catch(() => {});
 
@@ -407,16 +511,17 @@ export default function MapaColombia(props: Props) {
       // Del globo a Colombia. Se vuela directo: encadenar el "moveend" del giro de entrada
       // dejaba el mapa esperando un evento que, según la carga, podía no llegar.
       map.fitBounds(COLOMBIA, {
-        padding: relleno(map.getContainer().getBoundingClientRect()),
+        padding: relleno(map.getContainer().getBoundingClientRect(), ultimo.current.margenes),
         duration: reducirMovimiento() ? 0 : 2800,
         curve: 1.2,
         easing: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
         essential: true,
       });
-      const aterrizado = setTimeout(
-        () => !cancelado && setIntroTerminada(true),
-        reducirMovimiento() ? 0 : 2900,
-      );
+      const aterrizado = setTimeout(() => {
+        if (cancelado) return;
+        introRef.current = true;
+        setIntroTerminada(true);
+      }, reducirMovimiento() ? 0 : 2900);
       limpiezas.push(() => clearTimeout(aterrizado));
     });
 
@@ -556,20 +661,39 @@ export default function MapaColombia(props: Props) {
       if (o.dpto !== departamento) onEntrar(o.dpto);
     });
 
-    // Un zoom hecho a mano manda sobre el reencuadre automático del globo.
-    map.on("zoomend", (e) => {
-      if ((e as { originalEvent?: unknown }).originalEvent) zoomManual.current = true;
+    // Un movimiento hecho a mano manda sobre el reencuadre automático.
+    const aMano = (e: object) => {
+      if ("originalEvent" in e && e.originalEvent) camaraManual.current = true;
+    };
+    map.on("dragend", () => (camaraManual.current = true));
+    map.on("zoomend", aMano);
+    map.on("rotateend", aMano);
+    map.on("pitchend", aMano);
+
+    // El teclado mueve el mapa cuando el lienzo tiene el foco: hay que decirlo.
+    const lienzo = map.getCanvas();
+    const conFoco = () => setTecladoEnMapa(true);
+    const sinFoco = () => setTecladoEnMapa(false);
+    lienzo.addEventListener("focus", conFoco);
+    lienzo.addEventListener("blur", sinFoco);
+    limpiezas.push(() => {
+      lienzo.removeEventListener("focus", conFoco);
+      lienzo.removeEventListener("blur", sinFoco);
     });
+
     let reencuadre: ReturnType<typeof setTimeout> | undefined;
     const observador = new ResizeObserver(() => {
       map.resize();
       clearTimeout(reencuadre);
       reencuadre = setTimeout(() => {
-        if (ultimo.current.ambito !== "internacional" || zoomManual.current) return;
-        const { clientWidth: w, clientHeight: h } = map.getContainer();
-        const libre = libreGlobo(w);
-        giroRef.current?.fijarZoom(zoomGlobo(w, h, libre), rellenoGlobo(libre));
-      }, 120);
+        if (camaraManual.current || mapaRef.current !== map) return;
+        if (ultimo.current.ambito === "internacional") {
+          const { clientWidth: w, clientHeight: h } = map.getContainer();
+          const libre = libreGlobo(ultimo.current.margenes ?? MARGENES_BASE);
+          giroRef.current?.fijarZoom(zoomGlobo(w, h, libre), rellenoGlobo(libre));
+        } else if (introRef.current)
+          encuadrar(map, { ...ultimo.current, margenes: ultimo.current.margenes, duracion: 300 });
+      }, 200);
     });
     limpiezas.push(() => clearTimeout(reencuadre));
     observador.observe(contenedor.current);
@@ -606,6 +730,9 @@ export default function MapaColombia(props: Props) {
     const geo = geoRef.current;
     if (!mapaListo(map) || !geo || !capasListas) return;
     const v = valores[metrica];
+
+    const pintar = () => {
+    if (!mapaListo(map) || mapaRef.current !== map) return;
 
     if (ambito === "internacional") {
       const maxPais = Math.max(0, ...[...cifrasPaises.values()].map((c) => c[metrica]));
@@ -685,6 +812,31 @@ export default function MapaColombia(props: Props) {
       type: "FeatureCollection",
       features: puntos,
     });
+    };
+
+    const velar = (opacidad: number) => {
+      if (mapaRef.current !== map) return;
+      for (const capa of ["dep-velo", "mun-velo"])
+        if (map.getLayer(capa)) map.setPaintProperty(capa, "fill-opacity", opacidad);
+    };
+
+    // La primera pintura no relevaba nada: se pinta y ya. Después, el velo sube, los colores
+    // cambian detrás y el velo baja: así un cambio de métrica funde en vez de saltar.
+    if (!pintadoAlguna.current || reducirMovimiento()) {
+      pintadoAlguna.current = true;
+      pintar();
+      return;
+    }
+    velar(0.55);
+    const relevo = setTimeout(() => {
+      pintar();
+      velar(0);
+    }, 150);
+    return () => {
+      clearTimeout(relevo);
+      pintar();
+      velar(0);
+    };
   }, [
     valores,
     cifrasPaises,
@@ -696,6 +848,19 @@ export default function MapaColombia(props: Props) {
     departamentos,
     municipios,
   ]);
+
+  // Resaltado desde el panel: pasar el cursor por el ranking enciende ese territorio.
+  const { resaltado = null } = props;
+  useEffect(() => {
+    const map = mapaRef.current;
+    if (!mapaListo(map) || !capasListas || !resaltado || ambito === "internacional") return;
+    const id = { source: resaltado.length === 2 ? "departamentos" : "municipios", id: resaltado };
+    map.setFeatureState(id, { hover: true });
+    return () => {
+      if (mapaRef.current === map && map.getSource(id.source))
+        map.setFeatureState(id, { hover: false });
+    };
+  }, [resaltado, capasListas, ambito]);
 
   // Selección
   useEffect(() => {
@@ -739,37 +904,50 @@ export default function MapaColombia(props: Props) {
       );
     }
 
+    // Las torres crecen desde el suelo mientras la cámara se inclina, y se aplastan antes de
+    // esconderse. Sin los dos cuadros de espera la transición no arranca: la capa acaba de nacer.
     const nacional = ambito === "nacional";
-    map.setLayoutProperty(
-      "dep-3d",
-      "visibility",
-      nacional && modo3d && !departamento ? "visible" : "none",
-    );
-    map.setLayoutProperty(
-      "mun-3d",
-      "visibility",
-      nacional && modo3d && departamento ? "visible" : "none",
-    );
+    const esperas: ReturnType<typeof setTimeout>[] = [];
+    const suave = !reducirMovimiento();
+    for (const [capa, activa] of [
+      ["dep-3d", nacional && modo3d && !departamento],
+      ["mun-3d", nacional && modo3d && Boolean(departamento)],
+    ] as const) {
+      if (activa) {
+        map.setLayoutProperty(capa, "visibility", "visible");
+        const subir = () =>
+          mapaRef.current === map && map.setPaintProperty(capa, "fill-extrusion-vertical-scale", 1);
+        if (suave) requestAnimationFrame(() => requestAnimationFrame(subir));
+        else subir();
+      } else {
+        map.setPaintProperty(capa, "fill-extrusion-vertical-scale", 0);
+        const ocultar = () =>
+          mapaRef.current === map && map.setLayoutProperty(capa, "visibility", "none");
+        if (suave) esperas.push(setTimeout(ocultar, 1000));
+        else ocultar();
+      }
+    }
 
-    if (!introTerminada || !nacional) return;
-    const caja = departamento ? (cajas as Record<string, number[]>)[departamento] : null;
-    map.fitBounds(
-      caja
-        ? [
-            [caja[0], caja[1]],
-            [caja[2], caja[3]],
-          ]
-        : COLOMBIA,
-      {
-        padding: relleno(map.getContainer().getBoundingClientRect()),
-        duration: reducirMovimiento() ? 0 : 1700,
-        pitch: modo3d ? 52 : 0,
-        bearing: modo3d ? -14 : 0,
-        essential: true,
-        maxZoom: 9.5,
-      },
-    );
-  }, [departamento, modo3d, capasListas, introTerminada, ambito]);
+    // Se vuelve a un encuadre calculado: lo que la persona moviera a mano ya no aplica.
+    camaraManual.current = false;
+    if (introTerminada && nacional)
+      encuadrar(map, { departamento, modo3d, margenes: props.margenes, duracion: 1700 });
+    return () => esperas.forEach(clearTimeout);
+  }, [departamento, modo3d, capasListas, introTerminada, ambito, props.margenes]);
+
+  // Los controles crecieron o menguaron (una fila de filtros más): se reencuadra sin drama.
+  const margenes = props.margenes;
+  useEffect(() => {
+    const map = mapaRef.current;
+    const previos = margenesPrevios.current;
+    const actuales = margenes ?? MARGENES_BASE;
+    margenesPrevios.current = actuales;
+    if (!mapaListo(map) || !capasListas || !introTerminada) return;
+    if (ambito !== "nacional" || camaraManual.current) return;
+    if (Math.abs(actuales.top - previos.top) < 24 && Math.abs(actuales.bottom - previos.bottom) < 24)
+      return;
+    encuadrar(map, { departamento, modo3d, margenes: actuales, duracion: 300 });
+  }, [margenes, ambito, departamento, modo3d, capasListas, introTerminada]);
 
   // Ámbito: Colombia ↔ el mundo girando
   useEffect(() => {
@@ -788,6 +966,7 @@ export default function MapaColombia(props: Props) {
         "dep-borde",
         "dep-resplandor",
         "dep-contorno",
+        "dep-velo",
       ])
         map.setLayoutProperty(capa, "visibility", internacional ? "none" : "visible");
       for (const capa of [
@@ -796,8 +975,15 @@ export default function MapaColombia(props: Props) {
         "mun-borde",
         "mun-resplandor",
         "mun-contorno",
+        "mun-velo",
       ])
         map.setLayoutProperty(capa, "visibility", internacional ? "none" : "visible");
+      // En el mundo, los nombres de países y continentes ceden el paso a la cifra de Colombia.
+      for (const [capa, opacidad] of [
+        ["continent-label", internacional ? 0.18 : 0.3],
+        ["country-label", internacional ? 0.5 : 0.3],
+      ] as const)
+        if (map.getLayer(capa)) map.setPaintProperty(capa, "text-opacity", opacidad);
     };
     // Las capas con feature-state no transicionan: el relevo se hace bajo un velo breve, en vez
     // de un corte seco. En la primera pasada (carga) no hay nada que relevar.
@@ -819,9 +1005,9 @@ export default function MapaColombia(props: Props) {
     }
     // El disco se encuadra según el contenedor: ocupa ~85 % del lado menor en cualquier pantalla.
     const { clientWidth: w, clientHeight: h } = map.getContainer();
-    const libre = libreGlobo(w);
+    const libre = libreGlobo(props.margenes ?? MARGENES_BASE);
     const zoom = zoomGlobo(w, h, libre);
-    zoomManual.current = false;
+    camaraManual.current = false;
     map.easeTo({
       center: CENTRO_MUNDO,
       zoom,
@@ -835,6 +1021,8 @@ export default function MapaColombia(props: Props) {
     // Sin temporizador: mientras dura el vuelo el giro calla (`isMoving`) y luego arranca con rampa.
     giro.iniciar(zoom);
     return limpiar;
+    // `margenes` se lee al entrar al mundo; su cambio lo atiende el efecto de reencuadre.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ambito, capasListas]);
 
   // Algo encima del mapa, o la persona pidió pausa: el globo se queda quieto.
@@ -858,6 +1046,7 @@ export default function MapaColombia(props: Props) {
           )
         : Math.max(0, ...v.departamentos.values());
   const nombreDepto = departamento ? nombrePropio(departamentos[departamento]?.nombre ?? "") : "";
+  const paisesConDatos = [...cifrasPaises.values()].filter((c) => c[metrica] > 0).length;
 
   return (
     <div className="absolute inset-0">
@@ -894,6 +1083,7 @@ export default function MapaColombia(props: Props) {
       <AnimatePresence>
         {!capasListas && !fallo && (
           <motion.div
+            role="status"
             className="pointer-events-none absolute inset-0 grid place-items-center"
             exit={{ opacity: 0 }}
           >
@@ -907,8 +1097,10 @@ export default function MapaColombia(props: Props) {
 
       {/* Tooltip */}
       <AnimatePresence>
-        {/* Al abrir un departamento el cursor puede seguir sobre él: ese tooltip ya no aplica. */}
+        {/* Al abrir un departamento —o al irse al mundo— el cursor puede seguir sobre lo de antes:
+            ese tooltip ya no habla de lo que hay en pantalla. */}
         {bajoCursor &&
+          (bajoCursor.fuente === "paises") === (ambito === "internacional") &&
           !(bajoCursor.fuente === "departamentos" && bajoCursor.codigo === departamento) && (
             <Tooltip
               key="tooltip"
@@ -926,46 +1118,61 @@ export default function MapaColombia(props: Props) {
           )}
       </AnimatePresence>
 
-      {/* Pausa del giro: todo lo que se mueve solo debe poder detenerse */}
-      {ambito === "internacional" && capasListas && (
-        <button
-          onClick={() => setGiroPausado((p) => !p)}
-          aria-pressed={!giroPausado}
-          title={giroPausado ? "Reanudar el giro del globo" : "Pausar el giro del globo"}
-          className="vidrio absolute right-[10px] bottom-[150px] z-10 grid size-[29px] place-items-center rounded-md text-secondary transition-colors hover:text-accent"
-        >
-          {giroPausado ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
-          <span className="sr-only">Giro automático</span>
-        </button>
+      {/* Junto a los controles de Mapbox: pausa del globo en el mundo, vista 3D en Colombia.
+          Nunca coinciden, así que comparten sitio. */}
+      {capasListas && (
+        <div className="absolute right-[10px] bottom-[150px] z-10 flex flex-col gap-1.5">
+          {ambito === "internacional" ? (
+            <button
+              onClick={() => setGiroPausado((p) => !p)}
+              aria-pressed={!giroPausado}
+              aria-label={giroPausado ? "Reanudar el giro del globo" : "Pausar el giro del globo"}
+              className="vidrio grid size-[29px] place-items-center rounded-md text-secondary transition-colors hover:text-accent pointer-coarse:size-11"
+            >
+              {giroPausado ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+            </button>
+          ) : (
+            <button
+              onClick={props.onModo3d}
+              aria-pressed={modo3d}
+              aria-label="Vista 3D"
+              className={`vidrio grid size-[29px] place-items-center rounded-md transition-colors pointer-coarse:size-11 ${
+                modo3d ? "border-gold-500! text-accent" : "text-secondary hover:text-accent"
+              }`}
+            >
+              {modo3d ? <Box className="size-3.5" /> : <Layers className="size-3.5" />}
+            </button>
+          )}
+        </div>
       )}
 
       {/* Franja inferior única: leyenda y pista comparten fila y no pueden pisarse */}
-      <div className="pointer-events-none absolute inset-x-3 bottom-4 flex items-end gap-3 pr-10 sm:inset-x-6 sm:bottom-6">
+      <div
+        className="group/pie pointer-events-none absolute inset-x-3 bottom-4 flex items-end gap-3 pr-10 sm:inset-x-6 sm:bottom-6"
+        data-pistas={pistas.ver ? "si" : "no"}
+        onPointerEnter={() => asomarPistas(true)}
+        onPointerLeave={() => asomarPistas(false)}
+        onFocusCapture={() => asomarPistas(true)}
+        onBlurCapture={() => asomarPistas(false)}
+      >
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: introTerminada ? 1 : 0, y: introTerminada ? 0 : 12 }}
           transition={{ duration: 0.6 }}
-          className="vidrio w-44 shrink-0 rounded-md p-3 sm:w-64 sm:p-3.5"
+          className="pointer-events-auto shrink-0"
         >
-          <p className="etiqueta mb-2 truncate">
-            {METRICAS[metrica].etiqueta} ·{" "}
-            {ambito === "internacional" ? "Mundo" : departamento ? nombreDepto : "Colombia"}
-          </p>
-          <div
-            className="h-2.5 rounded-full"
-            style={{ background: `linear-gradient(90deg, ${RAMPA_MAPA.join(",")})` }}
+          <Leyenda
+            metrica={metrica}
+            ambito={ambito}
+            territorio={
+              ambito === "internacional" ? "Mundo" : departamento ? nombreDepto : "Colombia"
+            }
+            max={maxEscala}
+            paisesConDatos={paisesConDatos}
+            onCentrarColombia={() =>
+              mapaRef.current?.easeTo({ center: [-74, 4.5], duration: 900, essential: true })
+            }
           />
-          <div className="cifra mt-1.5 flex justify-between text-xs text-secondary">
-            <span>{maxEscala ? 1 : "—"}</span>
-            <span>{maxEscala ? formatoNumero(maxEscala) : "sin registros"}</span>
-          </div>
-          <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-            <span
-              className="size-3 rounded-[3px] border border-default"
-              style={{ background: RELLENO_VACIO }}
-            />
-            {ambito === "internacional" ? "Sin datos internacionales" : "Sin registros"}
-          </div>
         </motion.div>
         {/* La pista aparece al aterrizar, no a un tiempo fijo */}
         <motion.div
@@ -974,10 +1181,107 @@ export default function MapaColombia(props: Props) {
           transition={{ duration: 0.6, delay: 0.15 }}
           className="flex min-w-0 flex-1 justify-center"
         >
-          {props.pie}
+          {tecladoEnMapa ? (
+            <p className="vidrio rounded-full px-4 py-1.5 text-xs whitespace-nowrap text-secondary">
+              Flechas: mover · <span className="cifra">+</span>/<span className="cifra">−</span>:
+              acercar · Esc: subir un nivel
+            </p>
+          ) : (
+            props.pie
+          )}
         </motion.div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Leyenda de la escala. El color va por raíz cuadrada (los conteos son muy desiguales), así que
+ * la marca del medio del degradado vale el 25 % del máximo, no el 50 %: se rotula para no mentir.
+ */
+function Leyenda({
+  metrica,
+  ambito,
+  territorio,
+  max,
+  paisesConDatos,
+  onCentrarColombia,
+}: {
+  metrica: Metrica;
+  ambito: Ambito;
+  territorio: string;
+  max: number;
+  paisesConDatos: number;
+  onCentrarColombia: () => void;
+}) {
+  const [abierta, setAbierta] = useState(false);
+  const marcas = max >= 8 ? [1, Math.round(max * 0.25), Math.round(max * 0.5625), max] : [1, max];
+
+  // En el mundo, con un solo país con registros, un degradado de un solo punto no dice nada.
+  if (ambito === "internacional" && paisesConDatos === 1)
+    return (
+      <button
+        onClick={onCentrarColombia}
+        className="vidrio flex items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-secondary transition-colors hover:text-primary"
+      >
+        <span className="size-2.5 rounded-[3px] bg-gold-500" />
+        <span>
+          <span className="text-primary">Colombia</span> ·{" "}
+          <span className="cifra text-primary">{formatoNumero(max)}</span>{" "}
+          {METRICAS[metrica].plural}
+          <span className="block text-[11px] text-muted">único país con registros</span>
+        </span>
+      </button>
+    );
+
+  const cuerpo = (
+    <>
+      <p className="etiqueta mb-2 truncate">
+        {METRICAS[metrica].etiqueta} · {territorio}
+      </p>
+      <div
+        className="h-2.5 rounded-full"
+        style={{ background: `linear-gradient(90deg, ${RAMPA_MAPA.join(",")})` }}
+      />
+      {max > 0 ? (
+        <div className="cifra mt-1.5 flex justify-between text-xs text-secondary">
+          {marcas.map((n, i) => (
+            <span key={i}>{formatoNumero(n)}</span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1.5 text-xs text-muted">Sin registros con estos filtros</p>
+      )}
+      <div className="mt-2 flex items-center gap-2 text-xs text-muted">
+        <span
+          className="size-3 rounded-[3px] border border-default"
+          style={{ background: RELLENO_VACIO }}
+        />
+        {ambito === "internacional" ? `Sin ${METRICAS[metrica].plural}` : "Sin registros"}
+      </div>
+      {max >= 8 && <p className="mt-1 text-[11px] text-muted">Escala de raíz cuadrada</p>}
+    </>
+  );
+
+  return (
+    <>
+      {/* En pantallas estrechas la leyenda se pliega: si no, tapa medio mapa. */}
+      <div className="sm:hidden">
+        {abierta && <div className="vidrio mb-2 w-56 rounded-md p-3">{cuerpo}</div>}
+        <button
+          onClick={() => setAbierta((v) => !v)}
+          aria-expanded={abierta}
+          className="vidrio flex h-9 items-center gap-2 rounded-md px-3 text-xs font-bold text-secondary"
+        >
+          <span
+            className="h-2.5 w-8 rounded-full"
+            style={{ background: `linear-gradient(90deg, ${RAMPA_MAPA.join(",")})` }}
+          />
+          Escala
+        </button>
+      </div>
+      <div className="vidrio hidden w-64 rounded-md p-3.5 sm:block">{cuerpo}</div>
+    </>
   );
 }
 

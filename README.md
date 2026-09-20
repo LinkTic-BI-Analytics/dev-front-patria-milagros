@@ -24,7 +24,14 @@ Plan Nacional de Desarrollo 2026–2030** se relacionan.
   el relato que más se repite, y filtro del tablero por eje.
 - **Datos en vivo.** Cada visita lee la base; el encabezado dice hace cuánto y permite actualizar sin
   recargar ni perder filtros.
-- **Acceso** con un token único institucional.
+- **Vistas que se comparten.** Territorio, métrica, filtros y pestaña viajan en la dirección: el
+  botón «Copiar enlace de esta vista» entrega exactamente lo que hay en pantalla.
+- **Modo presentación.** Un recorrido de seis pasos por el tablero, que avanza a mano (espacio o
+  flechas), para mostrarlo en una reunión.
+- **En el teléfono** los filtros viven en una hoja que sube desde abajo y la tabla se vuelve
+  tarjetas: nada de scroll horizontal.
+- **Acceso** con un token único institucional. Si la sesión caduca, se avisa y se vuelve a donde
+  se estaba.
 
 Nada lo redacta un modelo: las síntesis se agrupan contando y la relación con el Plan se hace por
 palabras clave, verificable contra la tabla.
@@ -37,22 +44,22 @@ pnpm install
 pnpm dev                     # http://localhost:3000
 ```
 
-| Variable | Uso |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Proyecto Supabase |
-| `SUPABASE_SECRET_KEY` | **Solo servidor.** El esquema `participacion` no da permisos a `anon` |
-| `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_MAPBOX_STYLE` | Mapa base |
-| `ACCESS_TOKEN` | Token único de acceso al tablero |
-| `SESSION_SECRET` | Firma de la cookie de sesión (`openssl rand -base64 32`) |
+| Variable                                               | Uso                                                                   |
+| ------------------------------------------------------ | --------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`                             | Proyecto Supabase                                                     |
+| `SUPABASE_SECRET_KEY`                                  | **Solo servidor.** El esquema `participacion` no da permisos a `anon` |
+| `NEXT_PUBLIC_MAPBOX_TOKEN`, `NEXT_PUBLIC_MAPBOX_STYLE` | Mapa base                                                             |
+| `ACCESS_TOKEN`                                         | Token único de acceso al tablero                                      |
+| `SESSION_SECRET`                                       | Firma de la cookie de sesión (`openssl rand -base64 32`)              |
 
 ## Comandos
 
-| Comando | Qué hace |
-|---|---|
-| `pnpm dev` / `pnpm build` / `pnpm start` | Desarrollo, build y servidor de producción |
-| `pnpm lint` · `pnpm exec tsc --noEmit` | Lint y revisión de tipos |
-| `node scripts/preparar-geo.mjs` | Regenera `public/data/geo/*.json` y `src/lib/geo/cajas.json` desde los GeoJSON originales |
-| `node scripts/generar-iconos.mjs` | Regenera `favicon.ico` y `apple-icon.png` desde `src/app/icon.svg` (macOS + Chrome) |
+| Comando                                  | Qué hace                                                                                  |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `pnpm dev` / `pnpm build` / `pnpm start` | Desarrollo, build y servidor de producción                                                |
+| `pnpm lint` · `pnpm exec tsc --noEmit`   | Lint y revisión de tipos                                                                  |
+| `node scripts/preparar-geo.mjs`          | Regenera `public/data/geo/*.json` y `src/lib/geo/cajas.json` desde los GeoJSON originales |
+| `node scripts/generar-iconos.mjs`        | Regenera `favicon.ico` y `apple-icon.png` desde `src/app/icon.svg` (macOS + Chrome)       |
 
 ## Stack
 
@@ -68,6 +75,7 @@ src/lib/datos/      Lectura en servidor (tablero.ts), agregación pura en client
 src/lib/pnd/        Catálogo del Plan y alineador por palabras clave
 src/lib/auth/       Sesión firmada (HMAC)
 src/lib/ui/         Sistema de movimiento y Esc por capas
+src/components/ui/  Piezas compartidas: Segmentado (radiogroup) y Pista (tooltip por portal)
 src/components/     tablero/ (panel, narrativas, encabezado), mapa/ (Mapbox, globo), ejes/ (modal 3D)
 public/data/        Cartografía original y generada
 baas/               Copia de referencia del esquema de la base

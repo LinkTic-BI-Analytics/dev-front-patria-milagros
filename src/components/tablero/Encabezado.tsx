@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { motion } from "motion/react";
 import { LogOut, Orbit, RefreshCw } from "lucide-react";
 import { salir } from "@/app/acceso/acciones";
@@ -48,6 +48,10 @@ export function Encabezado({
   onActualizar: () => void;
 }) {
   const tic = useSyncExternalStore(suscribirReloj, leerReloj, sinReloj);
+  // Salir se confirma en el sitio: un clic de más en «Salir» no debería tirar la sesión.
+  const [confirmaSalida, setConfirmaSalida] = useState(false);
+  const relojSalida = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(relojSalida.current), []);
   const hora = new Intl.DateTimeFormat("es-CO", {
     timeZone: "America/Bogota",
     hour: "2-digit",
@@ -76,15 +80,18 @@ export function Encabezado({
           <span />
           <span />
         </div>
-        <h1 className="titulo-display truncate text-sm font-black tracking-tight uppercase sm:text-[1.05rem]">
+        {/* Sin `truncate`: por debajo de `xl` el título se parte en dos líneas antes que cortarse. */}
+        <h1 className="titulo-display text-[11px] leading-[1.1] font-black tracking-tight uppercase sm:text-[13px] xl:text-[1.05rem]">
           Sistema de <span className="text-accent">Escucha</span> y Planeación Nacional
         </h1>
+        <p className="hidden truncate text-[11px] text-muted xl:block">{proceso}</p>
       </div>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
         {hayPnd && (
           <button
             onClick={onEjes}
+            aria-haspopup="dialog"
             onPointerEnter={onPrecargarEjes}
             onFocus={onPrecargarEjes}
             className="group relative inline-flex h-9 items-center gap-2 overflow-hidden rounded-sm border border-gold-600/60 bg-[rgba(255,200,0,.08)] px-3 text-xs font-bold tracking-[0.06em] text-accent uppercase transition-colors hover:bg-[rgba(255,200,0,.16)]"
@@ -94,7 +101,7 @@ export function Encabezado({
             <span className="relative hidden sm:inline">Ejes articuladores</span>
             <span className="relative sm:hidden">Ejes</span>
             {ejesFiltrados > 0 && (
-              <span className="cifra relative grid size-5 place-items-center rounded-full bg-action-primary text-[10px] text-action-primary-text">
+              <span className="cifra relative grid size-5 place-items-center rounded-full bg-action-primary text-[11px] text-action-primary-text">
                 {ejesFiltrados}
               </span>
             )}
@@ -134,10 +141,21 @@ export function Encabezado({
         <form action={salir}>
           <button
             type="submit"
-            className="inline-flex h-9 items-center gap-2 rounded-sm border border-default px-3 text-xs font-bold tracking-[0.08em] text-secondary uppercase transition-colors hover:border-gold-600 hover:text-accent"
+            aria-label={confirmaSalida ? "Confirmar cierre de sesión" : "Cerrar sesión"}
+            onClick={(e) => {
+              if (confirmaSalida) return;
+              e.preventDefault();
+              setConfirmaSalida(true);
+              relojSalida.current = setTimeout(() => setConfirmaSalida(false), 4000);
+            }}
+            className={`inline-flex h-9 items-center gap-2 rounded-sm border px-3 text-xs font-bold tracking-[0.08em] uppercase transition-colors ${
+              confirmaSalida
+                ? "border-danger text-danger"
+                : "border-control text-secondary hover:border-gold-600 hover:text-accent"
+            }`}
           >
             <LogOut className="size-4" />
-            <span className="hidden sm:inline">Salir</span>
+            <span className="hidden sm:inline">{confirmaSalida ? "¿Confirmar?" : "Salir"}</span>
           </button>
         </form>
       </div>

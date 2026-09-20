@@ -1,16 +1,20 @@
 > **Estado de esta hoja de ruta.** Sale de una auditoría UI/UX de 130 hallazgos verificados contra el código (commit `ccb226d`).
-> **Oleadas 0 a 4: implementadas** (20 de septiembre de 2026). Las oleadas 5 y 6 quedan pendientes.
+> **Las siete oleadas están implementadas** (20 de septiembre de 2026).
 >
-> | Oleada | Estado | Puntos |
-> |---|---|---|
-> | 0 · Cimientos | ✅ Hecha | S1, S2, A1, E0 |
-> | 1 · Globo y navegación del modal | ✅ Hecha | G1–G4, E1–E3, E8, R1 (overlay sin blur) |
-> | 2 · Información del modal | ✅ Hecha | E4–E7, E9, P3 |
-> | 3 · Defectos del tablero | ✅ Hecha | M1, M2, P1, P2, N1, N2, N3, A2, S3 |
-> | 4 · Pulido | ✅ Hecha en lo esencial | G5 (velo de relevo), G6 (clic en Colombia), M3, M6, P4, P5, P7, N4 (memo, búsqueda diferida), N5 (lugares expandibles), R1/R3, S4, A3, A4 |
-> | 4 · Pendiente | ⏳ | M4 (reordenar controles superiores), M5 (padding medido), M7 (torres 3D animadas), P6 (densidad del panel), N4 (`<mark>`, atajo `/`, paginador numerado), G6 (etiquetas del mapa en español) |
-> | 5 y 6 | ⏳ Pendientes | Ver §3 |
+> | Oleada                           | Estado | Puntos                                                |
+> | -------------------------------- | ------ | ----------------------------------------------------- |
+> | 0 · Cimientos                    | ✅     | S1, S2, A1, E0                                        |
+> | 1 · Globo y navegación del modal | ✅     | G1–G4, E1–E3, E8, R1 (overlay sin blur)               |
+> | 2 · Información del modal        | ✅     | E4–E7, E9, P3                                         |
+> | 3 · Defectos del tablero         | ✅     | M1, M2, P1, P2, N1, N2, N3, A2, S3                    |
+> | 4 · Pulido                       | ✅     | G5, G6, M3–M7, P4–P7, N4, N5, R1, R3, S4, A3, A4      |
+> | 5 · Profundidad                  | ✅     | P8–P11, N6–N10, E10, E11 (+F0), F1, X1–X4, M8, A5, R4 |
+> | 6 · Opcionales                   | ✅     | E12, F2, P12, F3, A6, A7, M9 (parcial)                |
 >
+> **Fuera de alcance, con motivo:** R2 (recorte condicional del vidrio) necesita una grabación de
+> rendimiento en el equipo del cliente; R5 dependía de que M7 no bastara, y M7 quedó bien; de M9 se
+> hizo el resaltado ranking → mapa, no el buscador «Ir a…» ni la ficha anclada, porque el botón
+> «Ver municipios» (M1) ya resuelve ese caso.
 > Pendiente de equipos reales: Magic Mouse/trackpad en Safari, ratón de muescas en Windows/Firefox, iOS y Android.
 > Los números de línea valen para `ccb226d`: al implementar, ubique por símbolo.
 > Decisiones ya tomadas por el usuario: en el login se quita solo el texto del vencimiento (pie: «Acceso protegido · uso institucional»); «Datos en vivo» se vuelve real con «hace X min» + botón de actualizar, sin refresco automático.
@@ -40,55 +44,55 @@
 
 ## 1. Duplicados fusionados y contradicciones resueltas
 
-| # | Tema | Hallazgos | Gana | Por qué |
-|---|---|---|---|---|
-| 1 | Fórmula del zoom del globo | MAPA-01, RESP-01, MOV-01, MUNDO-01 | La función de MAPA-01, inversa exacta | Todas son equivalentes; solo cambian el diámetro objetivo y el acotado. Objetivo: `k = 0.85` (rango a validar 0.82–0.88) y acotado `[0.3, 2.6]`. El mínimo 1.2 de MUNDO-01 recorta el disco en móvil. |
-| 2 | Reencuadre al redimensionar en Mundo | MAPA-01 (`jumpTo`), RESP-01 (`setZoom`), MOV-01 y MUNDO-01 (zoom dentro del bucle del giro) | Zoom dentro del integrador (`fijarZoom`). `jumpTo({zoom})` si el giro está parado. | Un `easeTo` muere en el siguiente frame del giro: `jumpTo` hace `_stop()`. Un solo `jumpTo` por frame evita peleas. |
-| 3 | Qué hace el giro al agarrar el globo | MOV-01 (frena en 0.8 s) contra MAPA-03, RESP-01 y MUNDO-01 (corte inmediato) | Corte inmediato: `ocupado = agarrado \|\| map.isMoving()` → `v = 0` y sin `jumpTo` | Desacelerar mientras el usuario arrastra cancela DragPan, la inercia y los botones +/−. |
-| 4 | Política de hover en Mundo | MAPA-02 (frenar solo sobre países con datos, inactividad de 4 s y re-evaluación), RESP-01 y MUNDO-01 (frenar sobre cualquier país), MOV-01 (bajar a 1°/s) | MAPA-02 | Casi todo el globo es país. Frenar sobre cualquiera significa que con el cursor encima nunca gira. Un 1°/s deja el tooltip obsoleto. MAPA-02 resuelve además el cursor aparcado. |
-| 5 | Velocidad de crucero | 3 / 3.5 / 4 / 4 °/s | 3°/s, y 2.4°/s por debajo de 640 px, con factor por zoom | Con el disco un 37 % mayor, 3°/s equivalen a unos 19 px/s en el ecuador. Es la lectura «fluida, no brusca» que pidió el usuario. |
-| 6 | Bearing inclinado del globo | MAPA-02 original contra MAPA-03(g) | Sin bearing | Inclina todas las etiquetas y contradice el retorno a bearing 0. |
-| 7 | Mecanismo de Esc | MAPA-08 y EJES-09 (prop + captura), INT-01 y FLUJO-02 (manejador único en Tablero), A11Y-02 (pila `useEscape`) | Pila `useEscape`. El manejador base, escalonado, vive en Tablero. | El rediseño añade muchas capas: hoja inferior, popovers, Pista, detalle de fila, «¿Cómo se calcula?». La pila escala; el orden de prioridad de INT-01 se conserva como base. La guarda `e.defaultPrevented` de MAPA-08 no funciona por orden de registro, como su propio verificador señala. |
-| 8 | Esc dentro del modal | MAPA-08 (dos tiempos: primero deselecciona) contra EJES-01(modal) (Esc siempre cierra) | Esc siempre cierra | Es el patrón de diálogo de APG. «Ver los seis» cubre el regreso al panorama. |
-| 9 | Rueda y trackpad en la órbita | EJES-02 y EJES-01(flujo) (rotación continua, encaja a los 140 ms) contra A11Y-01 y MOV-02 (pasos discretos con enfriamiento) | Pasos discretos para la rueda; continuo solo para el arrastre | La inercia del trackpad emite eventos cerca de 1 s. El modo continuo retrasa la apertura del detalle y compite con el resorte. Se adopta de EJES-02 la normalización de `deltaMode` y el ignorar `ctrlKey`. |
-| 10 | Radio de la órbita | A11Y-01 (`36cqw`) contra EJES-02 y EJES-10 (medido en JS) | Medido en JS con ResizeObserver, publicado como `--radio` | El arrastre necesita el radio en px (`gradosPorPx`). `container-type` sobre el elemento con `perspective` es un riesgo que el propio A11Y-01 admite. Los `22cqw` de EJES-10 daban 169 px, menos que hoy. |
-| 11 | Flechas laterales en móvil | EJES-01(modal) (a los lados) contra A11Y-01 y EJES-01(flujo) (en la fila del paginador) | Desde `sm` a los lados; por debajo, en la fila del indicador | A 390 px taparían las tarjetas vecinas del coverflow. |
-| 12 | Foco en tarjetas 3D | A11Y-01 (roving tabindex en tarjetas) contra EJES-09 (tarjetas `aria-hidden`, puntos como único tablist) | EJES-09 | Una tarjeta rotada o semioculta es mal objetivo de foco. Dos tablist duplican la navegación. |
-| 13 | CTA de filtrar | EJES-01(flujo) y plan original (filtra y cierra) contra EJES-11 (sin autocierre, pie en dos acciones) | EJES-11 | `filtros.ejes` es multiselección; el autocierre obliga a reabrir por cada eje. «Ver el tablero filtrado» da el camino al resultado. |
-| 14 | «Puesto 2.º de 6» en el detalle del eje | EJES-03 contra EJES-01(flujo) | Sin puesto; participación porcentual | Un «6.º de 6» sobre un eje del Gobierno es torpe. El orden ya se lee en el panorama. |
-| 15 | Bloqueo de scroll del modal | EJES-09, INT-01, FLUJO-02 (`overflow` en `<html>`) contra A11Y-02 (en `<body>`) | `<body>` | Confirmado en `globals.css`: con `html{overflow:hidden}`, el body se vuelve contenedor de scroll propio (tiene `height:100%` y `overflow-x:hidden`) y la página salta. Se añade `html{scrollbar-gutter:stable}`. |
-| 16 | `inert` | EJES-09 original (sobre el root de Tablero) | Fragmento: envoltorio con `inert` y el modal como hermano | El modal se renderiza dentro del root; ponerlo inerte inutiliza el propio modal. |
-| 17 | Transición del detalle del eje | EJES-11 (`popLayout`) contra MOV-02 y MOV-04 (rejilla `[grid-area:1/1]`, cruce simultáneo) | Rejilla apilada, con las variantes direccionales de EJES-11 | El equipo ya retiró dos `wait` por salidas colgadas. La rejilla no mide layout y es la opción más robusta. |
-| 18 | Regla global de foco | MOV-06 (con `border-radius: inherit`) contra NARR-09 y MARCO-10 | Sin `border-radius`, con `:where()`, dentro de `@layer base` | `inherit` toma el radio del padre y deforma el elemento. La regla del canvas de Mapbox va sin capa, porque la actual sin capa le ganaría. |
-| 19 | `MotionConfig` | MOV-05 (con `transition` por defecto) contra MARCO-09 y A11Y-07 | Solo `reducedMotion="user"` | El `transition` por defecto cambia resortes implícitos y no lo heredan los componentes que declaran `{delay}`. Sería una regresión difícil de auditar. |
-| 20 | Ubicación del módulo de movimiento y de los tokens | MOV-05 (`src/lib/movimiento.ts`, editar `tokens.css`) contra MARCO-09 y MARCO-12. A11Y-06 también edita `tokens.css`. | `src/lib/ui/movimiento.ts`; tokens nuevos y sobrescrituras en `globals.css :root` | `tokens.css` y `tailwind-theme.css` son copia byte a byte del kit de marca. `globals.css` ya sobrescribe `--font-*` con la misma especificidad y va después en la cascada. |
-| 21 | Orden en móvil | MOVIL-01 (`display:contents` + `order`) contra PANEL-11 y RESP-03 (tres hijos de `<main>` colocados con grid) | Grid con orden de DOM real | `order` deja el teclado y el lector de pantalla en otro orden (WCAG 2.4.3). No hace falta partir TarjetasKpi. |
-| 22 | Barra de contexto de filtros | FLUJO-01 (BarraContexto fija de 40 px) contra PANEL-02 (pastilla única) y NARR-03 (chips en Narrativas) | Distribuido: pastilla en el héroe, chips en Narrativas y «de 807 · %» en el KPI, con un helper común `describirFiltros` | La barra fija rompe tres `calc()` de altura, consume 40 px donde PANEL-03 lucha por el pliegue y duplica BarraFiltros. |
-| 23 | «Sin relación con el Plan» | FLUJO-01 (`SIN_EJE` en el `filtrar()` global) contra NARR-03 (booleano local con exclusión mutua) | NARR-03 | Es menos invasivo. No crea un filtro global sin control visible en la barra del mapa. |
-| 24 | Clic de eje en AlineacionPnd | FLUJO-01 (conserva el salto de pestaña) contra NARR-03 y NARR-06 (no salta) | No salta. La columna de líneas hace de vista previa y hay un botón «Ver las N narrativas» | Coinciden dos verificadores. El clic pasa a ser filtro global y no debe cambiar el contexto de lectura. |
-| 25 | Tabla de narrativas | RESP-04 (ocultar «Último») contra NARR-02 (reestructurar a 4–5 columnas más variante de tarjetas) | NARR-02, con el umbral corregido | NARR-02 proponía `@3xl` (768 px), pero a 1280 px el ancho útil es 746 px y caería en tarjetas. Usar `@[44rem]` (704 px). |
-| 26 | Cargadores | MAPA-10 y ACCESO-01 (3 instancias) contra MARCO-06 (2 instancias, contenedor sin animar) | MARCO-06 (`CargaMapa`) | Son tres árboles distintos y no pueden cruzarse. Dos instancias con el mismo marcado evitan el doble fundido. |
-| 27 | Municipios diferidos | MAPA-10 (fetch en el hilo principal y `setData(obj)`) contra REND-01 (`setData(url)`, lo parsea el worker) | REND-01, con la UI «Cargando municipios…» de MAPA-10 | El hilo principal nunca ve los 2.1 MB. El índice por departamento sale de `Object.keys(municipios)`, que ya llega por props. |
-| 28 | Cambio de métrica en el coroplético | MAPA-12 (tween de feature-state por frame) contra REND-04 y MOV-03 (capa velo constante) | Velo primero; el tween queda opcional tras medir | `fill-opacity` con feature-state no interpola. El velo es determinista y no llama `setFeatureState` por frame. |
-| 29 | Cifras sobre las torres 3D | MAPA-12 original (`symbol-z-elevate`) contra su verificador (`symbol-z-offset`) | `symbol-z-offset`, a validar. Plan B: ocultar `cifras-texto` en 3D. | `z-elevate` es una propiedad de layout booleana ligada a edificios. |
-| 30 | Tooltip del mapa | MAPA-09 (tamaño medido) contra REND-02 (constantes 240/214; quitar `.vidrio`) | Tamaño medido con ref, y quitar `.vidrio` | El contenido pasa a variar (una línea para países sin datos). El backdrop-filter que se mueve cada frame es el más caro. |
-| 31 | Táctil en el mapa | MAPA-09 (marca de tiempo de `touchend`) contra A11Y-03 (`(hover:none)` y ficha anclada) | `(hover:none)` sin tooltip, más la ficha de acción contextual. La marca de tiempo queda como guarda opcional para dispositivos híbridos. | `pointerType` no existe en el mousemove emulado. La ficha coincide con el CTA de M1. |
-| 32 | Franja inferior | MUNDO-01 (exportar la leyenda a Tablero), MARCO-12 (umbrales `@[78rem]`), RESP-02 (coach-mark con `localStorage`) contra MAPA-07 (slot `pie` dentro del mapa, pistas efímeras de 8 s) | MAPA-07 | La leyenda depende de estado interno del mapa. Con flex el solape es imposible por construcción. Las pistas efímeras no dependen de `localStorage` y siguen saliendo en cada demo. |
-| 33 | Padding del mapa | RESP-02 (`top:132`) y MOVIL-01 (`top:~90`) contra MAPA-06 (medido con ResizeObserver, umbral de 24 px) | MAPA-06 | Elimina los números mágicos. El umbral evita que el mapa «respire». |
-| 34 | 2D/3D | MAPA-05 (etiqueta = acción) contra A11Y-05 (etiqueta fija + `aria-pressed`) | Ubicación de MAPA-05 (IControl de Mapbox) con la etiqueta fija «Vista 3D» de A11Y-05 | Con `aria-pressed` la etiqueta no debe cambiar. |
-| 35 | Conmutador Agrupadas / Todas | NARR-09 (`role=group` + `aria-pressed`) contra A11Y-05 (`Segmentado` radiogroup) | `Segmentado` compartido | La objeción de NARR-09 era un radiogroup «a medias». Con un componente completo desaparece. |
-| 36 | Rejilla de GraficaTemas | A11Y-05 (`9rem_1fr_2.5rem`) contra PANEL-01 (`9.5rem_1fr_3rem`) | PANEL-01 | Verificó que caben los tres nombres largos. La columna numérica debe ser fija. |
-| 37 | Colores de atención | A11Y-06 contra PANEL-08 | Paleta completa de PANEL-08, campo `patron` | Es coherente entre los cuatro estados. Ambas propuestas cumplen 3:1. |
-| 38 | Tarjetas KPI | SOBRA-01 (fundir «Ubicación» en el KPI principal) contra PANEL-03 (rejilla 2×2 reordenada) | PANEL-03. La duplicación se resuelve quitando el pie del KPI principal (`TarjetasKpi.tsx:76-80`). | Con 3 tarjetas la rejilla queda coja a nivel nacional. Ese pie lo ocupan «de N · %» (P4) y el delta (P9). |
-| 39 | KPI clicable | MOV-06 (tarjeta entera como `<button>`) contra PANEL-04 (botón estirado) | PANEL-04 | P11 mete botones de canal dentro del KPI principal. Anidar interactivos es HTML inválido. |
-| 40 | Refresco de datos | SOBRA-01 (`router.refresh()` manual) contra MARCO-03 (server action que devuelve datos) | MARCO-03 | Un fallo de `obtenerTablero` en un refresh dispara `error.tsx` y destruye todo el estado. La action degrada a «fallo». |
-| 41 | Vista Mundo y el departamento abierto | MUNDO-01 (no llamar `salir()`) contra el comportamiento actual, PANEL-09 y MAPA-04 | Mantener `salir()` | El regreso de MAPA-04 vuela a COLOMBIA. Aterrizar en un departamento no pedido es el defecto que describe PANEL-09. |
-| 42 | Texto del panel en Mundo | MUNDO-01 («Colombia concentra el 100 %») contra PANEL-02 («Colombia en el mundo» + «La base aún no registra país de origen») | PANEL-02 | `internacional.ts` documenta que no hay país de origen. El 100 % sería engañoso. |
-| 43 | Filtro de la etiqueta base de Colombia | MAPA-11 original | Descartado | `setFilter` reemplazaría el filtro propio del estilo de Studio. |
-| 44 | Estado en la URL | NARR-09 (`useSearchParams` en cliente) contra URL-01 (servidor valida y pasa `estadoInicial`) | URL-01, empezando solo con `replaceState` | Un solo mecanismo para todo el estado. `pushState` solo se añade tras validar que Atrás no re-pide el RSC. |
-| 45 | Texto del pie del login | «Sesión cifrada», «Conexión cifrada», «Acceso protegido» | «Acceso protegido · uso institucional», pendiente de confirmación | La cookie va firmada con HMAC, no cifrada. «Conexión cifrada» solo es cierto con HTTPS. |
-| 46 | Título del H2 de Narrativas más pequeño | NARR-11 original | Descartado | Contradice la línea gráfica y el «show visual». |
-| 47 | Grano a `z-index: 0` o `-1`; onboarding de burbujas; carrusel de KPI en móvil; hoja inferior para el detalle de relato; `animation-timeline`; columna sticky en la tabla | Varios | Descartados | Cada verificador demostró un daño o una incompatibilidad. |
+| #   | Tema                                                                                                                                                                     | Hallazgos                                                                                                                                                                             | Gana                                                                                                                                     | Por qué                                                                                                                                                                                                                                                                                      |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Fórmula del zoom del globo                                                                                                                                               | MAPA-01, RESP-01, MOV-01, MUNDO-01                                                                                                                                                    | La función de MAPA-01, inversa exacta                                                                                                    | Todas son equivalentes; solo cambian el diámetro objetivo y el acotado. Objetivo: `k = 0.85` (rango a validar 0.82–0.88) y acotado `[0.3, 2.6]`. El mínimo 1.2 de MUNDO-01 recorta el disco en móvil.                                                                                        |
+| 2   | Reencuadre al redimensionar en Mundo                                                                                                                                     | MAPA-01 (`jumpTo`), RESP-01 (`setZoom`), MOV-01 y MUNDO-01 (zoom dentro del bucle del giro)                                                                                           | Zoom dentro del integrador (`fijarZoom`). `jumpTo({zoom})` si el giro está parado.                                                       | Un `easeTo` muere en el siguiente frame del giro: `jumpTo` hace `_stop()`. Un solo `jumpTo` por frame evita peleas.                                                                                                                                                                          |
+| 3   | Qué hace el giro al agarrar el globo                                                                                                                                     | MOV-01 (frena en 0.8 s) contra MAPA-03, RESP-01 y MUNDO-01 (corte inmediato)                                                                                                          | Corte inmediato: `ocupado = agarrado \|\| map.isMoving()` → `v = 0` y sin `jumpTo`                                                       | Desacelerar mientras el usuario arrastra cancela DragPan, la inercia y los botones +/−.                                                                                                                                                                                                      |
+| 4   | Política de hover en Mundo                                                                                                                                               | MAPA-02 (frenar solo sobre países con datos, inactividad de 4 s y re-evaluación), RESP-01 y MUNDO-01 (frenar sobre cualquier país), MOV-01 (bajar a 1°/s)                             | MAPA-02                                                                                                                                  | Casi todo el globo es país. Frenar sobre cualquiera significa que con el cursor encima nunca gira. Un 1°/s deja el tooltip obsoleto. MAPA-02 resuelve además el cursor aparcado.                                                                                                             |
+| 5   | Velocidad de crucero                                                                                                                                                     | 3 / 3.5 / 4 / 4 °/s                                                                                                                                                                   | 3°/s, y 2.4°/s por debajo de 640 px, con factor por zoom                                                                                 | Con el disco un 37 % mayor, 3°/s equivalen a unos 19 px/s en el ecuador. Es la lectura «fluida, no brusca» que pidió el usuario.                                                                                                                                                             |
+| 6   | Bearing inclinado del globo                                                                                                                                              | MAPA-02 original contra MAPA-03(g)                                                                                                                                                    | Sin bearing                                                                                                                              | Inclina todas las etiquetas y contradice el retorno a bearing 0.                                                                                                                                                                                                                             |
+| 7   | Mecanismo de Esc                                                                                                                                                         | MAPA-08 y EJES-09 (prop + captura), INT-01 y FLUJO-02 (manejador único en Tablero), A11Y-02 (pila `useEscape`)                                                                        | Pila `useEscape`. El manejador base, escalonado, vive en Tablero.                                                                        | El rediseño añade muchas capas: hoja inferior, popovers, Pista, detalle de fila, «¿Cómo se calcula?». La pila escala; el orden de prioridad de INT-01 se conserva como base. La guarda `e.defaultPrevented` de MAPA-08 no funciona por orden de registro, como su propio verificador señala. |
+| 8   | Esc dentro del modal                                                                                                                                                     | MAPA-08 (dos tiempos: primero deselecciona) contra EJES-01(modal) (Esc siempre cierra)                                                                                                | Esc siempre cierra                                                                                                                       | Es el patrón de diálogo de APG. «Ver los seis» cubre el regreso al panorama.                                                                                                                                                                                                                 |
+| 9   | Rueda y trackpad en la órbita                                                                                                                                            | EJES-02 y EJES-01(flujo) (rotación continua, encaja a los 140 ms) contra A11Y-01 y MOV-02 (pasos discretos con enfriamiento)                                                          | Pasos discretos para la rueda; continuo solo para el arrastre                                                                            | La inercia del trackpad emite eventos cerca de 1 s. El modo continuo retrasa la apertura del detalle y compite con el resorte. Se adopta de EJES-02 la normalización de `deltaMode` y el ignorar `ctrlKey`.                                                                                  |
+| 10  | Radio de la órbita                                                                                                                                                       | A11Y-01 (`36cqw`) contra EJES-02 y EJES-10 (medido en JS)                                                                                                                             | Medido en JS con ResizeObserver, publicado como `--radio`                                                                                | El arrastre necesita el radio en px (`gradosPorPx`). `container-type` sobre el elemento con `perspective` es un riesgo que el propio A11Y-01 admite. Los `22cqw` de EJES-10 daban 169 px, menos que hoy.                                                                                     |
+| 11  | Flechas laterales en móvil                                                                                                                                               | EJES-01(modal) (a los lados) contra A11Y-01 y EJES-01(flujo) (en la fila del paginador)                                                                                               | Desde `sm` a los lados; por debajo, en la fila del indicador                                                                             | A 390 px taparían las tarjetas vecinas del coverflow.                                                                                                                                                                                                                                        |
+| 12  | Foco en tarjetas 3D                                                                                                                                                      | A11Y-01 (roving tabindex en tarjetas) contra EJES-09 (tarjetas `aria-hidden`, puntos como único tablist)                                                                              | EJES-09                                                                                                                                  | Una tarjeta rotada o semioculta es mal objetivo de foco. Dos tablist duplican la navegación.                                                                                                                                                                                                 |
+| 13  | CTA de filtrar                                                                                                                                                           | EJES-01(flujo) y plan original (filtra y cierra) contra EJES-11 (sin autocierre, pie en dos acciones)                                                                                 | EJES-11                                                                                                                                  | `filtros.ejes` es multiselección; el autocierre obliga a reabrir por cada eje. «Ver el tablero filtrado» da el camino al resultado.                                                                                                                                                          |
+| 14  | «Puesto 2.º de 6» en el detalle del eje                                                                                                                                  | EJES-03 contra EJES-01(flujo)                                                                                                                                                         | Sin puesto; participación porcentual                                                                                                     | Un «6.º de 6» sobre un eje del Gobierno es torpe. El orden ya se lee en el panorama.                                                                                                                                                                                                         |
+| 15  | Bloqueo de scroll del modal                                                                                                                                              | EJES-09, INT-01, FLUJO-02 (`overflow` en `<html>`) contra A11Y-02 (en `<body>`)                                                                                                       | `<body>`                                                                                                                                 | Confirmado en `globals.css`: con `html{overflow:hidden}`, el body se vuelve contenedor de scroll propio (tiene `height:100%` y `overflow-x:hidden`) y la página salta. Se añade `html{scrollbar-gutter:stable}`.                                                                             |
+| 16  | `inert`                                                                                                                                                                  | EJES-09 original (sobre el root de Tablero)                                                                                                                                           | Fragmento: envoltorio con `inert` y el modal como hermano                                                                                | El modal se renderiza dentro del root; ponerlo inerte inutiliza el propio modal.                                                                                                                                                                                                             |
+| 17  | Transición del detalle del eje                                                                                                                                           | EJES-11 (`popLayout`) contra MOV-02 y MOV-04 (rejilla `[grid-area:1/1]`, cruce simultáneo)                                                                                            | Rejilla apilada, con las variantes direccionales de EJES-11                                                                              | El equipo ya retiró dos `wait` por salidas colgadas. La rejilla no mide layout y es la opción más robusta.                                                                                                                                                                                   |
+| 18  | Regla global de foco                                                                                                                                                     | MOV-06 (con `border-radius: inherit`) contra NARR-09 y MARCO-10                                                                                                                       | Sin `border-radius`, con `:where()`, dentro de `@layer base`                                                                             | `inherit` toma el radio del padre y deforma el elemento. La regla del canvas de Mapbox va sin capa, porque la actual sin capa le ganaría.                                                                                                                                                    |
+| 19  | `MotionConfig`                                                                                                                                                           | MOV-05 (con `transition` por defecto) contra MARCO-09 y A11Y-07                                                                                                                       | Solo `reducedMotion="user"`                                                                                                              | El `transition` por defecto cambia resortes implícitos y no lo heredan los componentes que declaran `{delay}`. Sería una regresión difícil de auditar.                                                                                                                                       |
+| 20  | Ubicación del módulo de movimiento y de los tokens                                                                                                                       | MOV-05 (`src/lib/movimiento.ts`, editar `tokens.css`) contra MARCO-09 y MARCO-12. A11Y-06 también edita `tokens.css`.                                                                 | `src/lib/ui/movimiento.ts`; tokens nuevos y sobrescrituras en `globals.css :root`                                                        | `tokens.css` y `tailwind-theme.css` son copia byte a byte del kit de marca. `globals.css` ya sobrescribe `--font-*` con la misma especificidad y va después en la cascada.                                                                                                                   |
+| 21  | Orden en móvil                                                                                                                                                           | MOVIL-01 (`display:contents` + `order`) contra PANEL-11 y RESP-03 (tres hijos de `<main>` colocados con grid)                                                                         | Grid con orden de DOM real                                                                                                               | `order` deja el teclado y el lector de pantalla en otro orden (WCAG 2.4.3). No hace falta partir TarjetasKpi.                                                                                                                                                                                |
+| 22  | Barra de contexto de filtros                                                                                                                                             | FLUJO-01 (BarraContexto fija de 40 px) contra PANEL-02 (pastilla única) y NARR-03 (chips en Narrativas)                                                                               | Distribuido: pastilla en el héroe, chips en Narrativas y «de 807 · %» en el KPI, con un helper común `describirFiltros`                  | La barra fija rompe tres `calc()` de altura, consume 40 px donde PANEL-03 lucha por el pliegue y duplica BarraFiltros.                                                                                                                                                                       |
+| 23  | «Sin relación con el Plan»                                                                                                                                               | FLUJO-01 (`SIN_EJE` en el `filtrar()` global) contra NARR-03 (booleano local con exclusión mutua)                                                                                     | NARR-03                                                                                                                                  | Es menos invasivo. No crea un filtro global sin control visible en la barra del mapa.                                                                                                                                                                                                        |
+| 24  | Clic de eje en AlineacionPnd                                                                                                                                             | FLUJO-01 (conserva el salto de pestaña) contra NARR-03 y NARR-06 (no salta)                                                                                                           | No salta. La columna de líneas hace de vista previa y hay un botón «Ver las N narrativas»                                                | Coinciden dos verificadores. El clic pasa a ser filtro global y no debe cambiar el contexto de lectura.                                                                                                                                                                                      |
+| 25  | Tabla de narrativas                                                                                                                                                      | RESP-04 (ocultar «Último») contra NARR-02 (reestructurar a 4–5 columnas más variante de tarjetas)                                                                                     | NARR-02, con el umbral corregido                                                                                                         | NARR-02 proponía `@3xl` (768 px), pero a 1280 px el ancho útil es 746 px y caería en tarjetas. Usar `@[44rem]` (704 px).                                                                                                                                                                     |
+| 26  | Cargadores                                                                                                                                                               | MAPA-10 y ACCESO-01 (3 instancias) contra MARCO-06 (2 instancias, contenedor sin animar)                                                                                              | MARCO-06 (`CargaMapa`)                                                                                                                   | Son tres árboles distintos y no pueden cruzarse. Dos instancias con el mismo marcado evitan el doble fundido.                                                                                                                                                                                |
+| 27  | Municipios diferidos                                                                                                                                                     | MAPA-10 (fetch en el hilo principal y `setData(obj)`) contra REND-01 (`setData(url)`, lo parsea el worker)                                                                            | REND-01, con la UI «Cargando municipios…» de MAPA-10                                                                                     | El hilo principal nunca ve los 2.1 MB. El índice por departamento sale de `Object.keys(municipios)`, que ya llega por props.                                                                                                                                                                 |
+| 28  | Cambio de métrica en el coroplético                                                                                                                                      | MAPA-12 (tween de feature-state por frame) contra REND-04 y MOV-03 (capa velo constante)                                                                                              | Velo primero; el tween queda opcional tras medir                                                                                         | `fill-opacity` con feature-state no interpola. El velo es determinista y no llama `setFeatureState` por frame.                                                                                                                                                                               |
+| 29  | Cifras sobre las torres 3D                                                                                                                                               | MAPA-12 original (`symbol-z-elevate`) contra su verificador (`symbol-z-offset`)                                                                                                       | `symbol-z-offset`, a validar. Plan B: ocultar `cifras-texto` en 3D.                                                                      | `z-elevate` es una propiedad de layout booleana ligada a edificios.                                                                                                                                                                                                                          |
+| 30  | Tooltip del mapa                                                                                                                                                         | MAPA-09 (tamaño medido) contra REND-02 (constantes 240/214; quitar `.vidrio`)                                                                                                         | Tamaño medido con ref, y quitar `.vidrio`                                                                                                | El contenido pasa a variar (una línea para países sin datos). El backdrop-filter que se mueve cada frame es el más caro.                                                                                                                                                                     |
+| 31  | Táctil en el mapa                                                                                                                                                        | MAPA-09 (marca de tiempo de `touchend`) contra A11Y-03 (`(hover:none)` y ficha anclada)                                                                                               | `(hover:none)` sin tooltip, más la ficha de acción contextual. La marca de tiempo queda como guarda opcional para dispositivos híbridos. | `pointerType` no existe en el mousemove emulado. La ficha coincide con el CTA de M1.                                                                                                                                                                                                         |
+| 32  | Franja inferior                                                                                                                                                          | MUNDO-01 (exportar la leyenda a Tablero), MARCO-12 (umbrales `@[78rem]`), RESP-02 (coach-mark con `localStorage`) contra MAPA-07 (slot `pie` dentro del mapa, pistas efímeras de 8 s) | MAPA-07                                                                                                                                  | La leyenda depende de estado interno del mapa. Con flex el solape es imposible por construcción. Las pistas efímeras no dependen de `localStorage` y siguen saliendo en cada demo.                                                                                                           |
+| 33  | Padding del mapa                                                                                                                                                         | RESP-02 (`top:132`) y MOVIL-01 (`top:~90`) contra MAPA-06 (medido con ResizeObserver, umbral de 24 px)                                                                                | MAPA-06                                                                                                                                  | Elimina los números mágicos. El umbral evita que el mapa «respire».                                                                                                                                                                                                                          |
+| 34  | 2D/3D                                                                                                                                                                    | MAPA-05 (etiqueta = acción) contra A11Y-05 (etiqueta fija + `aria-pressed`)                                                                                                           | Ubicación de MAPA-05 (IControl de Mapbox) con la etiqueta fija «Vista 3D» de A11Y-05                                                     | Con `aria-pressed` la etiqueta no debe cambiar.                                                                                                                                                                                                                                              |
+| 35  | Conmutador Agrupadas / Todas                                                                                                                                             | NARR-09 (`role=group` + `aria-pressed`) contra A11Y-05 (`Segmentado` radiogroup)                                                                                                      | `Segmentado` compartido                                                                                                                  | La objeción de NARR-09 era un radiogroup «a medias». Con un componente completo desaparece.                                                                                                                                                                                                  |
+| 36  | Rejilla de GraficaTemas                                                                                                                                                  | A11Y-05 (`9rem_1fr_2.5rem`) contra PANEL-01 (`9.5rem_1fr_3rem`)                                                                                                                       | PANEL-01                                                                                                                                 | Verificó que caben los tres nombres largos. La columna numérica debe ser fija.                                                                                                                                                                                                               |
+| 37  | Colores de atención                                                                                                                                                      | A11Y-06 contra PANEL-08                                                                                                                                                               | Paleta completa de PANEL-08, campo `patron`                                                                                              | Es coherente entre los cuatro estados. Ambas propuestas cumplen 3:1.                                                                                                                                                                                                                         |
+| 38  | Tarjetas KPI                                                                                                                                                             | SOBRA-01 (fundir «Ubicación» en el KPI principal) contra PANEL-03 (rejilla 2×2 reordenada)                                                                                            | PANEL-03. La duplicación se resuelve quitando el pie del KPI principal (`TarjetasKpi.tsx:76-80`).                                        | Con 3 tarjetas la rejilla queda coja a nivel nacional. Ese pie lo ocupan «de N · %» (P4) y el delta (P9).                                                                                                                                                                                    |
+| 39  | KPI clicable                                                                                                                                                             | MOV-06 (tarjeta entera como `<button>`) contra PANEL-04 (botón estirado)                                                                                                              | PANEL-04                                                                                                                                 | P11 mete botones de canal dentro del KPI principal. Anidar interactivos es HTML inválido.                                                                                                                                                                                                    |
+| 40  | Refresco de datos                                                                                                                                                        | SOBRA-01 (`router.refresh()` manual) contra MARCO-03 (server action que devuelve datos)                                                                                               | MARCO-03                                                                                                                                 | Un fallo de `obtenerTablero` en un refresh dispara `error.tsx` y destruye todo el estado. La action degrada a «fallo».                                                                                                                                                                       |
+| 41  | Vista Mundo y el departamento abierto                                                                                                                                    | MUNDO-01 (no llamar `salir()`) contra el comportamiento actual, PANEL-09 y MAPA-04                                                                                                    | Mantener `salir()`                                                                                                                       | El regreso de MAPA-04 vuela a COLOMBIA. Aterrizar en un departamento no pedido es el defecto que describe PANEL-09.                                                                                                                                                                          |
+| 42  | Texto del panel en Mundo                                                                                                                                                 | MUNDO-01 («Colombia concentra el 100 %») contra PANEL-02 («Colombia en el mundo» + «La base aún no registra país de origen»)                                                          | PANEL-02                                                                                                                                 | `internacional.ts` documenta que no hay país de origen. El 100 % sería engañoso.                                                                                                                                                                                                             |
+| 43  | Filtro de la etiqueta base de Colombia                                                                                                                                   | MAPA-11 original                                                                                                                                                                      | Descartado                                                                                                                               | `setFilter` reemplazaría el filtro propio del estilo de Studio.                                                                                                                                                                                                                              |
+| 44  | Estado en la URL                                                                                                                                                         | NARR-09 (`useSearchParams` en cliente) contra URL-01 (servidor valida y pasa `estadoInicial`)                                                                                         | URL-01, empezando solo con `replaceState`                                                                                                | Un solo mecanismo para todo el estado. `pushState` solo se añade tras validar que Atrás no re-pide el RSC.                                                                                                                                                                                   |
+| 45  | Texto del pie del login                                                                                                                                                  | «Sesión cifrada», «Conexión cifrada», «Acceso protegido»                                                                                                                              | «Acceso protegido · uso institucional», pendiente de confirmación                                                                        | La cookie va firmada con HMAC, no cifrada. «Conexión cifrada» solo es cierto con HTTPS.                                                                                                                                                                                                      |
+| 46  | Título del H2 de Narrativas más pequeño                                                                                                                                  | NARR-11 original                                                                                                                                                                      | Descartado                                                                                                                               | Contradice la línea gráfica y el «show visual».                                                                                                                                                                                                                                              |
+| 47  | Grano a `z-index: 0` o `-1`; onboarding de burbujas; carrusel de KPI en móvil; hoja inferior para el detalle de relato; `animation-timeline`; columna sticky en la tabla | Varios                                                                                                                                                                                | Descartados                                                                                                                              | Cada verificador demostró un daño o una incompatibilidad.                                                                                                                                                                                                                                    |
 
 ---
 
@@ -103,6 +107,7 @@ Etiquetas de prioridad:
 ### Frente S — Cimientos (sin cambio visible; desbloquean el resto)
 
 **S1 · IMPRESCINDIBLE (dependencia) · Sistema de movimiento** (MOV-05, MARCO-09, A11Y-07, NARR-11#3, PANEL-06#3) — esfuerzo bajo
+
 - **Qué:** un único módulo de movimiento y respeto real de `prefers-reduced-motion` en motion/react.
 - **Cómo:**
   - Crear `src/lib/ui/movimiento.ts` con:
@@ -120,6 +125,7 @@ Etiquetas de prioridad:
   - `pnpm build` sin errores.
 
 **S2 · IMPRESCINDIBLE (defecto) · Esc cierra solo la capa superior** (INT-01, FLUJO-02, A11Y-02#5, MAPA-08#1, EJES-01(modal)#6, EJES-09#5, NARR-01#7, NARR-08#3) — esfuerzo bajo
+
 - **Qué:** hoy un solo Esc cierra el modal y además saca del departamento o de Mundo. Esc en el buscador de narrativas también expulsa del territorio.
 - **Cómo:**
   - Crear `src/lib/ui/useEscape.ts`:
@@ -138,6 +144,7 @@ Etiquetas de prioridad:
   - Esc con Temas abierto solo cierra el popover.
 
 **S3 · RECOMENDADO · Foco de teclado con marca** (MARCO-10, A11Y-04#1, PANEL-12#5, NARR-09#4, MOV-06#1, EJES-09#8, MAPA-08#4, A11Y-03#3) — esfuerzo bajo
+
 - **Cómo:**
   - En `globals.css`: `@layer base { :where(a,button,summary,input,select,textarea,[role='tab'],[role='radio'],[tabindex]:not([tabindex='-1'])):focus-visible { outline:2px solid var(--gold-500); outline-offset:2px } }`, sin `border-radius`.
   - `.bg-action-primary:focus-visible{ outline-color: var(--text-primary) }`.
@@ -148,6 +155,7 @@ Etiquetas de prioridad:
   - Los dos inputs con `outline-none` conservan su anillo propio.
 
 **S4 · RECOMENDADO · Tokens propios de la app en `globals.css`** (A11Y-06#1, #4; MARCO-12d; MARCO-09d)
+
 - **Cómo:**
   - En `:root`: `--text-muted: rgba(237,241,247,.66)`, `--text-secondary: rgba(237,241,247,.80)`, `--border-control: rgba(255,255,255,.38)`, `--bg-mapa: #040C1D`.
   - En `@theme inline`: `--color-control` y `--color-mapa`.
@@ -158,6 +166,7 @@ Etiquetas de prioridad:
   - Contraste de `text-muted` ≥ 5.8:1 sobre surface-3.
 
 **S5 · RECOMENDADO · Piezas compartidas** (nacen en la oleada donde se usan por primera vez)
+
 - `src/components/ui/Pista.tsx`: tooltip con `createPortal` a `document.body`, `fixed z-[70]`, `role="tooltip"` y `useId`. Nace en P11. La reutilizan los chips de eje de M4.
 - `src/components/tablero/EstadoVacio.tsx`: nace en P2 o N3. Reemplaza `Vacio` de `Graficas.tsx:292`.
 - `src/components/ui/Segmentado.tsx`: radiogroup con roving tabindex y `layoutId` como prop. Nace en M4. Lo usan ámbito, métrica y Agrupadas/Todas.
@@ -168,6 +177,7 @@ Etiquetas de prioridad:
 ### Frente G — Globo (queja 1)
 
 **G1 · IMPRESCINDIBLE · Encuadre del globo según el contenedor** (MAPA-01, RESP-01#1, MOV-01 B–D, MUNDO-01#1) — impacto alto, esfuerzo bajo
+
 - **Cómo:**
   - En `src/components/mapa/paises.ts`, exportar `zoomGlobo(ancho, alto, libre = {top:64, bottom:8}, k = 0.85)`:
     - `f=1.5*alto; d=f*Math.SQRT1_2`;
@@ -188,6 +198,7 @@ Etiquetas de prioridad:
   - Si el casquete molesta bajo los filtros, bajar `k` a 0.82.
 
 **G2 · IMPRESCINDIBLE · Giro como integrador continuo, que convive con la cámara** (MAPA-02, MAPA-03, RESP-01#2, MOV-01 A, MUNDO-01#2, MARCO-05#0) — impacto alto, esfuerzo medio
+
 - **Cómo:** reescribir `crearGiro` en `paises.ts`.
   - Estado: `v`, `objetivo`, `anterior`, `latBase=8`, `zoomObjetivo`, `agarrado`, `libreDesde`, `ultimoFueGesto`, `bloqueado`, `pausaUsuario`.
   - Bucle rAF vivo mientras `activo`:
@@ -212,6 +223,7 @@ Etiquetas de prioridad:
   - En una grabación Performance de 10 s no hay frames de script por encima de 16 ms.
 
 **G3 · IMPRESCINDIBLE · Política de hover, inactividad y pausa** (MAPA-02 hover, RESP-01#3–4, MOV-01 E–F, EJES-10 «pausado», MUNDO-01#3) — esfuerzo medio
+
 - **Cómo:** en el `mousemove` del mapa (`:385-410`).
   - Si el país tiene datos (`cifrasPaises.get(codigo)?.[metrica] > 0`, leído de `ultimo.current`) → `frenarSuave()`. Al salir de ese país → `soltar(600)`.
   - Sobre océano o países sin datos no se toca el giro. `mouseout` → `soltar(0)`.
@@ -230,6 +242,7 @@ Etiquetas de prioridad:
   - El botón de pausa se opera con teclado.
 
 **G4 · IMPRESCINDIBLE (fluidez) · Tooltip fuera de React** (MAPA-09, REND-02) — esfuerzo medio
+
 - **Cómo:**
   - `x` e `y` con `useMotionValue`, y `useSpring` con `RESORTE.tooltip`.
   - Contenedor `absolute top-0 left-0` con `style={{x,y}}`, sin `.vidrio`: `bg-surface-1/95` con borde de vidrio.
@@ -248,6 +261,7 @@ Etiquetas de prioridad:
   - Pegado al borde derecho o inferior se voltea sin cortarse.
 
 **G5 · RECOMENDADO · Transición Colombia ↔ Mundo sin corte seco** (MAPA-04) — esfuerzo medio
+
 - **Cómo:**
   - Al cambiar de ámbito: `zM = zoomGlobo(w,h)`; `zN = map.cameraForBounds(COLOMBIA,{padding})?.zoom ?? 4.5`; `a = zM+0.3*(zN-zM)`; `b = zM+0.8*(zN-zM)`.
   - `setPaintProperty` con expresiones `['interpolate',['linear'],['zoom'], a, …, b, …]` solo durante la transición.
@@ -265,6 +279,7 @@ Etiquetas de prioridad:
   - Revisar el parpadeo por teselas retenidas; si aparece, acercar `a` a `zM`.
 
 **G6 · RECOMENDADO · Coherencia de la vista Mundo** (MAPA-11, MAPA-07#5, MAPA-08#3, PANEL-02#5, MUNDO-01#5 parcial)
+
 - **Cómo:**
   - `vestirMapaBase`: `setLayoutProperty(id,'text-field',['coalesce',['get','name_es'],['get','name']])` en las tres capas visibles.
     - Verificar antes con `map.getLayer('country-label')` que la fuente es `composite`.
@@ -286,6 +301,7 @@ Etiquetas de prioridad:
 Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/components/ejes/ModalEjes.tsx` en `ModalEjes.tsx` (marco y diálogo), `Orbita.tsx`, `TarjetaEje.tsx`, `DetalleEje.tsx`, `PanoramaEjes.tsx` y `useOrbita.ts` (rotación, `irA`, `paso`, rueda, pan, giro).
 
 **E0 · RECOMENDADO · Precarga del modal** (EJES-12, REND-05#5, EJES-01(flujo)#8, A11Y-02)
+
 - **Cómo:**
   - `onPointerEnter` y `onFocus` en el botón de `Encabezado.tsx:56` ejecutan `import('@/components/ejes/ModalEjes')`.
   - `requestIdleCallback` tras la intro, con `setTimeout` de 2 s como respaldo.
@@ -293,6 +309,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - **Comprobación:** en Network con «Slow 3G», el primer clic muestra el velo al instante.
 
 **E1 · IMPRESCINDIBLE · Flechas laterales, indicador y teclado correcto** (EJES-01(modal), A11Y-01#1–3,6, MOV-02#1–2,8, EJES-01(flujo) fase A)
+
 - **Cómo:**
   - `alFrente` con `useMotionValueEvent(rotacion,'change', …)`: `i=((Math.round(-r/60)%6)+6)%6`. `setAlFrente` solo se llama si `i` cambia.
   - `paso(dir) = irA(((elegido ?? alFrente)+dir+6)%6)`. Lo usan teclado, flechas, puntos, rueda y swipe. Corrige `ModalEjes.tsx:93`, donde con `elegido` nulo → siempre iba al índice 1.
@@ -313,6 +330,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - El lector de pantalla anuncia «3 / 6 · …».
 
 **E2 · IMPRESCINDIBLE · Rueda y trackpad horizontal, y arrastre y swipe** (EJES-02, A11Y-01#4–5, MOV-02#3–4, EJES-01(flujo) fase A)
+
 - **Cómo:**
   - **Radio medido:** ResizeObserver sobre la columna de la órbita.
     - `radioPx = ancho<640 ? Math.max(150, ancho*0.44) : clamp(150, ancho*0.34, 300)`.
@@ -340,6 +358,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - El swipe funciona en iOS y Android.
 
 **E3 · IMPRESCINDIBLE (defecto) · Máquina de estados del giro automático** (EJES-06, A11Y-01#7, MOV-02#7)
+
 - **Cómo:**
   - `giroActivo = !pausaManual && !reducido && elegido===null && !sobreTarjeta && !focoDentro && !interactuando`.
   - `sobreTarjeta` se activa por `onPointerEnter/Leave` de cada tarjeta, solo con `pointerType==='mouse'`. Sobre el contenedor el giro baja de 9 a 3°/s.
@@ -356,6 +375,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Con un eje abierto, la órbita no gira por debajo del detalle.
 
 **E4 · IMPRESCINDIBLE (queja 3) · Datos y vocabulario del modal** (EJES-03 datos, EJES-08, INFO-02, EJES-01(flujo) fase B)
+
 - **Cómo:**
   - Nueva `src/lib/datos/ejes.ts` con `resumenEjes(datos, base, codigo)`.
     - `base = filtrar(datos,{...filtros, ejes:[]})`.
@@ -373,6 +393,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Un eje con aportes y sin narrativas muestra «Aún no hay síntesis para este eje».
 
 **E5 · IMPRESCINDIBLE (queja 3) · Panel de detalle, fase 1, con transición direccional y CTA** (EJES-03 A–D y G, EJES-11, MOV-02#6, MOV-04#3)
+
 - **Cómo:**
   - Modal a `w-[min(88rem,96vw)]` y rejilla `lg:grid-cols-[minmax(0,1fr)_clamp(26rem,38%,34rem)]`.
   - Panel `flex flex-col`. El contenido va en `flex-1 overflow-y-auto overscroll-contain`. El pie queda fijo fuera del scroll, con un degradado de 24 px encima.
@@ -393,6 +414,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Se pueden marcar dos ejes sin reabrir el modal, y el contador de `Encabezado.tsx:64-68` lo refleja.
 
 **E6 · IMPRESCINDIBLE (queja 3) · Estado inicial «Los seis ejes frente a frente» y apertura contextual** (EJES-04)
+
 - **Cómo:**
   - Reemplaza el vacío punteado de `:283-299`.
   - Titular calculado: «Milagro Social concentra el 53 % de los aportes de Colombia».
@@ -408,6 +430,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Barrer la lista con el ratón no encadena seis giros.
 
 **E7 · IMPRESCINDIBLE (queja 3, «se siente raro») · Tarjetas legibles: billboard, geometría e higiene** (EJES-05, EJES-10 tamaño y render, A11Y-01#8, REND-03#2)
+
 - **Cómo:**
   - En el envoltorio de TarjetaEje:
     - Quitar `transform`, `filter` y `[backface-visibility:hidden]` del `style`.
@@ -433,6 +456,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - En DevTools → Layers no hay una capa de backdrop por tarjeta.
 
 **E8 · IMPRESCINDIBLE (defecto) · Diálogo accesible de verdad** (EJES-09, A11Y-02#1–4, INT-01#5, FLUJO-02)
+
 - **Cómo:**
   - Tablero devuelve un fragmento: `<><div inert={ejesAbiertos} className="flex min-h-dvh flex-col">…</div><AnimatePresence>{ejesAbiertos && datos.pnd && <ModalEjes/>}</AnimatePresence></>`.
   - `role="dialog" aria-modal="true" aria-labelledby="titulo-ejes"` pasa al panel. `id` en el h2. Quitar `aria-label` del backdrop.
@@ -449,6 +473,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - VoiceOver no lee el fondo.
 
 **E9 · RECOMENDADO · Móvil de 390 px** (EJES-07, RESP-04#5)
+
 - **Cómo:**
   - `h-[min(92dvh,52rem)]`.
   - Al abrir un eje, la órbita pasa de `min-h-[20rem]` a `min-h-[13rem]` con `transition-[min-height] duration-300`. Nunca con `layout`.
@@ -463,6 +488,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - el detalle visible sin buscar tras tocar una tarjeta.
 
 **E10 · RECOMENDADO · Escena con luz, suelo y cielo** (EJES-10)
+
 - **Cómo:**
   - Brillo especular con `backgroundPositionX = useTransform(angulo,[-60,60],['100%','0%'])` y canto `border-t-white/25`.
   - Suelo: una elipse con `rotateX(78deg)`, diámetro `calc(var(--radio)*2 + 13rem)`, borde dorado al 20 % y un radial dorado.
@@ -474,6 +500,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - El alto sobrante (unos 160 px arriba y abajo) queda ocupado.
 
 **E11 · RECOMENDADO · Detalle, fase 2, y salidas hacia el tablero** (EJES-03 E–F, EJES-11 «Ver sus narrativas», EJES-01(flujo))
+
 - **Cómo:**
   - Dos columnas: «Sectores que más hablan» (top 3, con `temaDe()`) y «Dónde se concentra».
   - Ficha institucional en `<dl>`: área DNP e indicadores, o un chip «Batería pendiente».
@@ -484,6 +511,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - **Comprobación:** desde el Eje 3, «Ver sus narrativas» aterriza en la tabla ya filtrada por ese eje.
 
 **E12 · OPCIONAL · Coreografía de apertura y cierre** (EJES-12)
+
 - **Cómo:**
   - `transformOrigin` hacia el botón: `onEjes(rect)` desde Encabezado.
   - `--apertura` como MotionValue aplicado como variable CSS en el anillo, y `translateZ(calc(var(--radio) * var(--apertura)))`.
@@ -496,6 +524,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 ### Frente M — Mapa nacional y controles
 
 **M1 · IMPRESCINDIBLE (defecto) · Bajar a municipios sin depender del doble clic** (MAPA-08#2, FLUJO-03, A11Y-03#1, PANEL-09#0–2)
+
 - **Cómo:**
   - Arreglo inmediato en `Tablero.tsx:384`: `onElegir={(c) => { if (ambito==='internacional') cambiarAmbito('nacional'); departamento ? setSeleccion(c) : entrar(c); }}`.
   - Con `seleccion?.length===2 && !departamento`, junto a «Quitar selección» (`:309-321`) va un botón primario dorado «Explorar sus N municipios», con `ArrowRight`, que llama `entrar(seleccion)`.
@@ -513,6 +542,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - El departamento seleccionado fuera del top aparece como «14.º».
 
 **M2 · IMPRESCINDIBLE (defecto) · Carga y errores del mapa** (MAPA-10, MARCO-06 a–b, ACCESO-01 carga, A11Y-03#2 y #4, REND-01#1–4)
+
 - **Cómo:**
   - **Robustez:**
     - sin `NEXT_PUBLIC_MAPBOX_TOKEN` → error `'token'` sin crear el mapa;
@@ -546,6 +576,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Se ve una sola identidad de carga, sin doble fundido.
 
 **M3 · RECOMENDADO · Franja inferior única y leyenda honesta** (MAPA-07, MARCO-12e, RESP-02 A2, MUNDO-01#6)
+
 - **Cómo:**
   - Dentro de MapaColombia: `<div className="pointer-events-none absolute inset-x-3 bottom-11 flex items-end justify-between gap-3 sm:inset-x-4">` con tres hijos:
     - la leyenda, `shrink-0`;
@@ -566,6 +597,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - El punto medio del degradado está rotulado con el 25 % del máximo.
 
 **M4 · RECOMENDADO · Controles superiores, fase A (escritorio)** (MAPA-05 A, RESP-02 A1 y A3–4, A11Y-04#2, A11Y-05#1–2 y #4)
+
 - **Cómo:**
   - 2D/3D sale de `SelectorMetrica` y pasa al IControl de G3: etiqueta fija «Vista 3D», `aria-pressed`, oculto en Mundo. Prop `onModo3d` en MapaColombia.
   - Por debajo de `@4xl` (contenedor menor de 896 px):
@@ -586,6 +618,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Las paradas de tabulación bajan de unas 25 a unas 10.
 
 **M5 · RECOMENDADO · Padding medido y reencuadre** (MAPA-06)
+
 - **Cómo:**
   - En Tablero: refs al bloque de controles y a la franja inferior. Un ResizeObserver guarda `margenes={top,bottom}`, redondeado a múltiplos de 8, y lo pasa como prop.
   - `relleno(tamano, margenes) => {top: margenes.top+12, bottom: Math.max(24, margenes.bottom+12), left/right: width<640 ? 20 : 40}`.
@@ -601,6 +634,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Redimensionar la ventana reencuadra.
 
 **M6 · RECOMENDADO · Intro con un solo vuelo y estado real** (MOV-03, ACCESO-01 intro, RESP-01#5)
+
 - **Cómo:**
   - Eliminar el `easeTo` lineal de `:324-326`.
   - Un único `map.flyTo({...map.cameraForBounds(COLOMBIA,{padding}), duration:2800, curve:1.15, easing: cúbica in-out, essential:true}, {intro:true})`.
@@ -614,6 +648,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - `curve: 1.15` no produce un alejamiento previo.
 
 **M7 · RECOMENDADO · Datos que cambian con gracia: torres 3D y velo** (MAPA-12, REND-04#1–2, MOV-03#5)
+
 - **Cómo:**
   - `dep-3d` y `mun-3d` nacen con `'fill-extrusion-vertical-scale':0` y `'…-transition':{duration:900,delay:250}`. En reposo siguen con `visibility:none`.
     - Al activar: `visible` y, en el siguiente rAF, escala 1.
@@ -629,6 +664,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Cambiar de métrica funde en lugar de saltar.
 
 **M8 · RECOMENDADO · Controles, fase B (móvil)** (MAPA-05 B, RESP-02 B, MOVIL-01 controles)
+
 - **Cómo:** por debajo de `@2xl` del contenedor.
   - Fila 1: miga compacta y botón «Filtros · n» (`SlidersHorizontal`).
   - Fila 2: métrica como `Segmentado` a lo ancho (`grid grid-cols-3 h-10`).
@@ -644,6 +680,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - El globo de G1 usa el margen medido.
 
 **M9 · OPCIONAL**
+
 - Resaltado ranking → mapa: prop `resaltado` y `setFeatureState({hover:true})` (PANEL-09#4).
 - Buscador «Ir a…» como combobox en la miga (A11Y-03#6).
 - Ficha anclada táctil (A11Y-03#5). M1 ya cubre lo esencial.
@@ -653,6 +690,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 ### Frente P — Panel lateral
 
 **P1 · IMPRESCINDIBLE (defecto) · Filtrar por tema ya no colapsa la gráfica** (PANEL-01, A11Y-05#7)
+
 - **Cómo:**
   - `temasPanel` en Tablero, calcado de `conteosEje`: `filtrar(datos,{temas:[],canales:filtros.canales,ejes:filtros.ejes})` con `enTerritorio`. Deps `[datos, filtros.canales, filtros.ejes, codigo]`.
   - `visibles`: el top 8 más los seleccionados que queden fuera del top.
@@ -667,6 +705,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - «Vivienda y territorio» no se trunca.
 
 **P2 · IMPRESCINDIBLE (defecto) · Estados en cero honestos** (PANEL-10, NARR-04 componente)
+
 - **Cómo:**
   - `vacio = resumen.aportes===0 && resumen.necesidades===0 && resumen.alertasActivas===0`.
   - Sustituir solo Temas, Evolución y Atención por `EstadoVacio` (S5) con `SearchX`.
@@ -680,6 +719,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - **Comprobación:** un clic en un departamento azul sin registros ya no dice «con los filtros actuales» cuando no hay filtros, y ofrece una salida.
 
 **P3 · IMPRESCINDIBLE (defecto visible) · Cifras grandes sin «64 , 8 %»** (PANEL-06, MARCO-11, A11Y-05#6, REND-04#3, A11Y-07#3)
+
 - **Cómo:**
   - En `globals.css`, `@layer components`: `.cifra-display{font-family:var(--font-body);font-variant-numeric:tabular-nums lining-nums;font-weight:700;letter-spacing:-.03em}`, sin `"zero"`.
   - `CifraAnimada`:
@@ -697,6 +737,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Con movimiento reducido no hay conteo.
 
 **P4 · RECOMENDADO · El panel dice que está filtrado y compara** (PANEL-02, FLUJO-01#4, SOBRA-01 KPI)
+
 - **Cómo:**
   - `totalTerritorio` sin filtros.
   - KPI principal: etiqueta «Aportes que cumplen los filtros», «de 807 · 32 %» y una barra `h-1`.
@@ -705,6 +746,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - **Comprobación:** con el Eje 4 activo, el KPI ya no muestra «260» a secas.
 
 **P5 · RECOMENDADO · KPI accionables** (PANEL-04, MOV-06#4)
+
 - **Cómo:**
   - `Tarjeta` recibe `onActivar` y `activa`. Un botón estirado `absolute inset-0 z-0` con `aria-pressed` y `aria-label="Ver {etiqueta} en el mapa"`. El contenido va en `relative z-10 pointer-events-none`.
   - Se aplica a aportes, necesidades y alertas.
@@ -713,6 +755,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - **Comprobación:** un clic en «Alertas activas» cambia la métrica del mapa y del selector a la vez.
 
 **P6 · RECOMENDADO · Jerarquía y densidad** (PANEL-03, SOBRA-01 KPIs)
+
 - **Cómo:**
   - Fila 1: Necesidades y Alertas. Fila 2: Municipios («61 de {totalMunicipios} · 5,4 %» con una mini barra) y Ubicación o Peso.
   - `p-3.5`, cifra a `text-[1.75rem]`, pie de una línea.
@@ -724,6 +767,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Más barras de temas a la vista a 1366×768.
 
 **P7 · RECOMENDADO · Estado de atención legible** (PANEL-08, A11Y-06#5)
+
 - **Cómo:**
   - `catalogos.ts`: recibido #3D74C9, remitido #6FA3EA, respondido #CFE2FB. `sin_respuesta_registrada` con `patron` rayado e `inset 0 0 0 1px rgba(169,203,245,.45)`.
   - Cifra titular «19,6 % con respuesta registrada · 54 de 276» y «222 pendientes».
@@ -733,6 +777,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - **Comprobación:** contraste del segmento pendiente ≥ 3:1. Hoy es 1.47:1.
 
 **P8 · RECOMENDADO · Evolución semanal** (PANEL-07)
+
 - **Cómo:**
   - `resumir` devuelve `evolucion[{clave,etiqueta,aportes,parcial}]`.
   - Semanal si hay menos de 4 meses (lunes ISO con `Date.UTC`). Las semanas vacías se rellenan.
@@ -745,6 +790,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - **Comprobación:** con datos del 20 de agosto al 11 de septiembre se ven 4–5 puntos, no 2.
 
 **P9 · RECOMENDADO · Tendencia y deltas** (PANEL-05)
+
 - **Cómo:**
   - `resumir(f, codigo, mesesEje, hoy?)` devuelve `serie` de 28 días y `delta7`.
   - Sparkline SVG con `motion.path pathLength`. El punto final es un `<span>` HTML con `animate-pulso`, porque `box-shadow` no existe en SVG.
@@ -755,6 +801,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Con un corte de más de 7 días sin actividad, no hay pill.
 
 **P10 · RECOMENDADO · Layout de `<main>` y señales de scroll** (PANEL-11, RESP-03)
+
 - **Cómo:**
   - Tres hijos directos, en orden de DOM: mapa, aside, Narrativas. Eliminar el wrapper de `:185`.
     - Mapa: `lg:col-start-1 lg:row-start-1 min-w-0`.
@@ -770,6 +817,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - El sticky se comporta como hoy.
 
 **P11 · RECOMENDADO · Pista, canal desde la leyenda, sello arriba y pie plegable** (PANEL-12, SOBRA-01 avisos, NARR-11#5)
+
 - **Cómo:**
   - `Pista` (S5) en la leyenda de canales, los segmentos de atención y el sello. Eliminar los `title` restantes, con números formateados.
   - Los items de la leyenda de canales pasan a `<button aria-pressed>` con `pointer-events-auto relative z-10`, que alternan `filtros.canales`.
@@ -779,6 +827,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - **Comprobación:** ningún tooltip se recorta por `overflow-hidden`. No hay botones anidados.
 
 **P12 · OPCIONAL · Titular ejecutivo** (INFO-01)
+
 - **Cómo:**
   - `src/lib/datos/titulares.ts`, puro.
   - Reglas por prioridad, sin rotación. Categoría exacta `atencion.sin_respuesta_registrada`. La concentración se calcula con aportes distintos.
@@ -789,6 +838,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 ### Frente N — Narrativas
 
 **N1 · IMPRESCINDIBLE (defecto) · Tabla sin desborde en portátiles** (NARR-02, RESP-04#2–4)
+
 - **Cómo:**
   - Agrupadas: Relato (flexible, `line-clamp-3`), Dónde, Veces (`w-36`), Último.
   - Todas: Narrativa, Territorio, Canal+Estado apilados, Fecha.
@@ -803,6 +853,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Tarjetas a 390 px y a 1024 px.
 
 **N2 · IMPRESCINDIBLE (defecto) · Un solo filtro por eje y chips removibles** (NARR-03, FLUJO-01#2 y #5)
+
 - **Cómo:**
   - En Tablero, memoizar `filtradosSinEje`. Se comparte con E4.
   - Pasar a Narrativas `onFiltros` y `onQuitarTerritorio`.
@@ -819,12 +870,14 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - El halo radial sigue recortado.
 
 **N3 · IMPRESCINDIBLE (defecto) · Pestaña Plan en blanco y vacíos con salida** (NARR-04)
+
 - **Cómo:**
   - `EstadoVacio` en el Panorama (`:263`), en el Plan (rama `alineacion.total===0`; el distintivo pasa a `null`, no «0%») y en la tabla (`:385`).
   - En la tabla: «Limpiar búsqueda» y «Pruebe con:» con 5 chips de `resumen.terminos`.
 - **Comprobación:** un municipio sin narrativas deja la pestaña Plan con mensaje y botón, no vacía.
 
 **N4 · RECOMENDADO · Búsqueda sin parpadeo, memo y paginador** (NARR-08, REND-05#1–4)
+
 - **Cómo:**
   - `export const Narrativas = memo(...)`.
   - `claveAnimacion` sin `busqueda`.
@@ -841,6 +894,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Paginar no obliga a bajar, hacer clic y subir.
 
 **N5 · RECOMENDADO · Filas que se abren** (NARR-01, NARR-10#1)
+
 - **Cómo:**
   - `GrupoNarrativo` ampliado sin romper `municipios: string[]`: añade `filas`, `conteoMunicipios`, `departamentos`, `canales`, `primera` y `claves`.
   - `abierta` dentro de `contexto`.
@@ -855,6 +909,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Esc cierra la fila sin salir del territorio (S2).
 
 **N6 · RECOMENDADO · Frase de generalidad honesta** (NARR-05)
+
 - Redacción por umbral: ≥50, 30–49 y <30.
 - `distintivo` frente al país: requiere `razon≥1.3`, n≥20 y ≥5 del tema. Devuelve `null` con un filtro de un solo tema.
 - Tres mini-datos en `grid-cols-3`.
@@ -862,6 +917,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - Corregir a «y el 48 %».
 
 **N7 · RECOMENDADO · Bloque del PND** (NARR-06)
+
 - Barra de composición al 100 %, monocroma dorada con alfa alterno. «Sin relación» va rayado.
 - Filas en dos líneas, sin `truncate`, escaladas sobre `total`.
 - Ejes en 0 agrupados.
@@ -872,6 +928,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - Filas deshabilitadas sin `opacity-45` (A11Y-06#7).
 
 **N8 · RECOMENDADO · Relatos y términos accionables** (NARR-07)
+
 - `Termino` gana `relatos` y `razon`. La selección es por `peso`.
 - La presentación es coherente con la cifra mostrada: `veces` a nivel país; «×2,3» en territorio.
 - Chips como `motion.button`, con `aria-label="Buscar narrativas que mencionan '…'"`.
@@ -880,6 +937,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - Etiqueta «34 veces · 8 %».
 
 **N9 · RECOMENDADO · Pestañas: móvil, ARIA y ritmo** (NARR-09#1 y #3, RESP-04#1, MOV-04#1–2, NARR-11#1–2)
+
 - **Cómo:**
   - Tablist con `overflow-x-auto snap-x`, etiqueta corta «Plan» e indicador `bottom-0`.
   - `id`/`aria-controls`, `role="tabpanel"`, roving y flechas.
@@ -892,6 +950,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - Al cambiar de territorio, el cuerpo no va 0.9 s por detrás del título.
 
 **N10 · RECOMENDADO · Columnas que informan y nota** (NARR-10#2–4, INFO-02 embudo, NARR-11#5)
+
 - «17 municipios · 4 departamentos» y, debajo, «Sobre todo en El Tarra (9)».
 - Fecha «10 de sept», con el año solo si difiere. Fecha relativa contra `datos.actualizadoEn`, nunca contra `new Date()`.
 - Cabeceras ordenables con `aria-sort`.
@@ -904,6 +963,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 ### Frente A — Marco y acceso
 
 **A1 · IMPRESCINDIBLE (defecto) · «Reintentar» que reintenta** (MARCO-02)
+
 - **Cómo:** en `src/app/(tablero)/error.tsx`.
   - Firma `{error, retry, reset}` y `reintentar = retry ?? reset ?? (() => location.reload())`. Borrar `unstable_retry`.
   - `useTransition` con `LoaderCircle` y `aria-busy`.
@@ -918,6 +978,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - No hay bucle de autorreintentos.
 
 **A2 · IMPRESCINDIBLE (promesa falsa) · «Datos en vivo» pasa a una actualización real** (MARCO-03, SOBRA-01)
+
 - **Cómo:**
   - `src/app/(tablero)/acciones.ts` con `actualizarTablero()`: valida `sesionValida(cookie)` primero y devuelve `{ok,datos}` o `{ok:false,motivo}`.
   - Tablero:
@@ -937,6 +998,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - `CifraAnimada` anima hacia las cifras nuevas.
 
 **A3 · RECOMENDADO · Encabezado** (MARCO-04, ACC-01#4)
+
 - h1 en dos líneas por debajo de `xl`, sin `truncate`: `text-[11px] leading-[1.1] sm:text-[13px] xl:text-[1.05rem]`.
 - Proceso visible desde `xl`.
 - «Salir» con `aria-label` y confirmación en línea de 4 s.
@@ -944,6 +1006,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - `priority` → `preload` en `Encabezado.tsx:41`, `loading.tsx:17` y `FormularioAcceso.tsx:29`.
 
 **A4 · RECOMENDADO · Login** (MARCO-01, MARCO-07, MARCO-08, MOV-04#4, ACC-01#1 y #3, ACCESO-01 copy)
+
 - **Cómo:**
   - **Pie** (pendiente de confirmación): `LockKeyhole` y «Acceso protegido · uso institucional». No tocar `DURACION_SESION_S`.
   - **Servidor:** `.trim()` al token y `return {ok:true}` en lugar de `redirect`.
@@ -965,6 +1028,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - «Ingresar» es visible sin scroll a 390×844.
 
 **A5 · RECOMENDADO · Esqueleto fiel** (MARCO-06 c–e, PANEL-03#6, MOV-03#6)
+
 - `MarcaEncabezado` compartido, sin motion, también en `loading.tsx`.
 - La columna derecha replica el layout final tras P6 y P10: héroe 115, KPI 160, rejilla 2×2 de 4×100, y 2 secciones.
 - Un `.panel` de 320 bajo el mapa por debajo de `lg`.
@@ -972,11 +1036,13 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - Hacerlo después de P6 y P10 para calcar las alturas definitivas.
 
 **A6 · OPCIONAL**
+
 - `not-found.tsx`.
 - `global-error.tsx`, que debe redeclarar las fuentes o extraerlas a `src/app/fuentes.ts`.
 - `robots` noindex y `viewport.themeColor` (MARCO-12 a–c).
 
 **A7 · OPCIONAL (decisión de seguridad)**
+
 - Aviso de sesión vencida (ACC-01#2): requiere alargar el `maxAge` de la cookie.
 - `?volver=` en `src/proxy.ts`, con guarda de redirección abierta. Solo si el usuario lo aprueba.
 
@@ -985,6 +1051,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 ### Frente R — Rendimiento y composición
 
 **R1 · RECOMENDADO · Cortes seguros de blur** (REND-03#1, #4 y #5, MARCO-05#1, A11Y-07#8)
+
 - Overlay del modal `bg-[rgba(3,8,20,.9)]`, sin `backdrop-blur-md`. La aurora animada obliga a re-difuminar la pantalla completa en cada frame.
 - `.fondo-vivo::before/::after` sin `filter: blur(90px)`:
   - gradientes suavizados, `will-change: transform` y escala de 1 → 1.06 → 0.98;
@@ -994,6 +1061,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - **Comprobación:** en DevTools → Rendering → Paint flashing, el esqueleto no repinta toda el área y el fondo no repinta.
 
 **R2 · RECOMENDADO · Medición obligatoria del giro y corte condicional** (MAPA-02 validación, MARCO-05#2, REND-03 final)
+
 - **Cómo:**
   - Grabar 10 s en Performance, con CPU 4x e idealmente en el equipo del cliente, con el globo girando.
   - Solo si hay frames por encima de 16 ms atribuibles a composición:
@@ -1003,18 +1071,21 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - **Comprobación:** comparar las grabaciones de antes y después.
 
 **R3 · RECOMENDADO · Vidrio legible** (A11Y-06#3, REND-03#7)
+
 - `--glass-bg: rgba(10,26,58,.72)`.
 - `.vidrio{backdrop-filter: blur(12px) brightness(.7)}`, sin `saturate`.
 - Lo mismo en `.mapboxgl-ctrl-group`.
 - **Comprobación:** sobre un departamento dorado, secondary ≥ 6:1 y muted ≥ 5.5:1. La translucidez sigue siendo visible.
 
 **R4 · RECOMENDADO · Caché y versión de geometrías** (REND-01#5–6)
+
 - `scripts/preparar-geo.mjs` escribe `src/lib/geo/version.json` con un hash. No usar `catalogoVersion`.
 - `next.config.ts`: `headers()` con `Cache-Control: public, max-age=31536000, immutable` para `/data/geo/:path*`.
 - `preconnect('https://api.mapbox.com')` en `src/app/(tablero)/page.tsx`.
 - **Comprobación:** con `next build && next start`. En dev Next pisa el header.
 
 **R5 · OPCIONAL**
+
 - `BarraProgreso` por transform (REND-04#4).
 - Utilidad `presionable` con `scale` individual, nunca en pestañas con `layoutId` ni en filas (MOV-06#2–3).
 - Tween en JS del coroplético, solo si M7 no basta y cada frame queda por debajo de 4–8 ms.
@@ -1024,6 +1095,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 ### Frente X — Accesibilidad transversal (lo no cubierto arriba)
 
 **X1 · RECOMENDADO · Semántica** (A11Y-05)
+
 - `Segmentado` con `radiogroup`.
 - Canales con `aria-label="Canal {etiqueta}"`.
 - Región viva en Tablero: `<p className="sr-only" aria-live="polite" aria-atomic>` con territorio, cifras y `describirFiltros`, con un debounce de 400 ms.
@@ -1031,14 +1103,17 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - Texto `sr-only` donde la información vive solo en `title`.
 
 **X2 · RECOMENDADO · Contraste y mínimos tipográficos** (A11Y-06#2, #6 y #7)
+
 - Nada por debajo de 12 px, salvo `.etiqueta` a 11 px y peso 700.
 - Los 6 `text-[10px]` suben a 11 px. Las notas pasan a `text-xs`.
 - `RAMPA_MAPA[0]` #7A6220, reinterpolando `[1]` y `[2]`. Validar en 2D, 3D y la leyenda.
 
 **X3 · RECOMENDADO · Enlaces de salto** (MARCO-10#4, A11Y-04#3)
+
 - Al inicio de Tablero, «Saltar a las narrativas» (`#narrativas`) y, opcional, a `#panel-territorial`.
 
 **X4 · RECOMENDADO · Convenciones escritas**
+
 - En `AGENTS.md`, fuera del bloque `BEGIN/END nextjs-agent-rules`, y en `public/linea-grafica-patria/LINEA-GRAFICA.md`:
   - anillo de foco;
   - pila de Escape;
@@ -1055,6 +1130,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 **F0 · RECOMENDADO (dependencia) · Subir `pestana` a Tablero** como prop controlada de Narrativas. La necesitan E11, N8, F2 y F4. `busqueda` se queda local.
 
 **F1 · RECOMENDADO · Un vocabulario** (INFO-02, EJES-08)
+
 - `GLOSARIO` en `catalogos.ts`.
 - «municipios con aportes» en `Tablero.tsx:339`.
 - `con más ${METRICAS[metrica].plural}` en `:377`.
@@ -1063,6 +1139,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - Popover «Cómo leer este tablero» con el glosario y las reglas R1 y R2, compartido con P11 y N10.
 
 **F2 · OPCIONAL (alto valor para compartir vistas) · Estado en la URL** (URL-01, NARR-09#2)
+
 - **Cómo:**
   - `src/lib/datos/estadoUrl.ts` con parse y serialize. Parámetros: `a,d,s,m,t,e,c,v,p,modo,q`. El eje va por número.
   - `page.tsx`: `await searchParams` → `estadoInicial`.
@@ -1073,6 +1150,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - Depende de N2 y F0.
 
 **F3 · OPCIONAL · Modo presentación** (DEMO-01)
+
 - Avance manual: Siguiente, espacio y flechas. Esc integrado en S2.
 - 6 pasos, con una leyenda tipo subtítulo que usa los `titulares()` de P12.
 - Sin temporizadores. Como mucho, esperar a `map.once('idle')`.
@@ -1084,6 +1162,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 ## 3. Dependencias y orden por oleadas
 
 **Dependencias duras**
+
 - S1 va antes de todo lo que toque animación: G2, E2, E3, G4 y P3.
 - S2 va antes de E8, N5, N4 (Esc en el buscador), M8, P11 y N10.
 - G1 va antes de G2 (factor por zoom y `fijarZoom`) y de G5 (stops).
@@ -1124,6 +1203,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 ## 4. Riesgos de regresión y cómo evitarlos
 
 **Mapbox**
+
 - `jumpTo` y `setCenter` hacen `_stop()`. Cualquier `easeTo`, `flyTo` o `fitBounds` lanzado con el giro activo muere.
   - Mitigación: el giro calla con `agarrado || map.isMoving()`. Un solo `jumpTo` por frame. El zoom de reencuadre va dentro del integrador.
 - El padding se retiene en el transform: `easeTo` hereda el de la última `fitBounds`.
@@ -1147,6 +1227,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - El comentario de `MapaColombia.tsx:336` documenta que `moveend` puede no llegar. Todo encadenado a `moveend` lleva un timeout de respaldo idempotente.
 
 **AnimatePresence y motion**
+
 - El equipo ya sufrió salidas que no terminaban con `mode="wait"`.
   - Regla: `wait` solo con salida ≤150 ms, solo opacidad, nunca anidado y nunca con claves derivadas de filtros o territorio.
   - El detalle del modal usa la rejilla `[grid-area:1/1]`, con `pointer-events-none` en el saliente.
@@ -1165,6 +1246,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
   - El «ahora» de las fechas es `datos.actualizadoEn`.
 
 **Transform de motion frente a los transforms 3D de la órbita**
+
 - Si `style.transform` es un string (hoy en `ModalEjes.tsx:345`), Motion no construye su transform y cualquier MotionValue de transform se ignora.
   - Mitigación: quitar `transform` del `style` y usar `transformTemplate`. Motion lo invoca siempre y recibe `""` cuando los valores son los de por defecto.
 - El orden de construcción de Motion es fijo: translate → scale → rotate → rotateX → rotateY.
@@ -1183,6 +1265,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - `reducedMotion="user"` no detiene `useAnimationFrame` ni `animate(rotacion)`. Con `useReducedMotion()`: sin giro, e `irA` con `{duration:0}`.
 
 **CSS y Tailwind v4**
+
 - Una regla sin capa gana a `@layer base` y a las utilidades. La regla global de foco va en `@layer base` con `:where()`. La del canvas de Mapbox va sin capa, reemplazando la actual.
 - `@container` (`container-type:inline-size`) añade contención de layout. El elemento pasa a ser bloque contenedor de los descendientes `fixed`.
   - Mitigación: la hoja inferior y `Pista` van siempre por portal a `body`.
@@ -1195,6 +1278,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 - `transition-colors` de Tailwind pisa el `transition-property` de la capa base. Por eso «presionable» es una `@utility` con `scale` como propiedad individual.
 
 **Next 16 y servidor**
+
 - `AGENTS.md` obliga a leer `node_modules/next/dist/docs/` antes de tocar `page.tsx`, `proxy.ts`, `error.tsx` o `headers()`.
   - `searchParams` es una Promise.
   - `priority` está obsoleto; usar `preload`.
@@ -1217,6 +1301,7 @@ Sugerencia de estructura para evitar un archivo de 900 líneas: partir `src/comp
 6. **Prueba en dispositivos reales.** Hace falta antes de cerrar E2, E9 y M8: trackpad y Magic Mouse en macOS, ratón de muescas en Windows y Firefox, iOS Safari y Android.
 
 ### Critical Files for Implementation
+
 - /Users/andres/Documents/LinkTic/Patria_Milagro/dev-front-patria-milagros/src/components/mapa/MapaColombia.tsx
 - /Users/andres/Documents/LinkTic/Patria_Milagro/dev-front-patria-milagros/src/components/mapa/paises.ts
 - /Users/andres/Documents/LinkTic/Patria_Milagro/dev-front-patria-milagros/src/components/ejes/ModalEjes.tsx

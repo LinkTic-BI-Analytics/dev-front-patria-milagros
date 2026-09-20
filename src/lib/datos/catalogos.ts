@@ -107,7 +107,7 @@ export const ESTADOS_ATENCION: Record<EstadoAtencion, { etiqueta: string; color:
 };
 
 /** Escala secuencial del mapa: un solo tono dorado, de tenue (poco) a brillante (mucho). */
-export const RAMPA_MAPA = ["#3B3217", "#6B5518", "#A07D1F", "#D4AA45", "#FFC800"] as const;
+export const RAMPA_MAPA = ["#7A6220", "#96771F", "#B49022", "#D4AA45", "#FFC800"] as const;
 
 export const ETAPAS_ALERTA: Record<EtapaAlerta, string> = {
   levantada: "Levantada",
@@ -130,6 +130,23 @@ export const etiquetaMes = (mes: string) => {
   return `${MESES[Number(m) - 1]} ${a.slice(2)}`;
 };
 
+const diaBogota = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Bogota",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+/** El «hoy» del tablero es el corte de los datos, no el reloj de quien mira (YYYY-MM-DD). */
+export const fechaEnBogota = (iso: string) => diaBogota.format(new Date(iso));
+
+const diaCorto = new Intl.DateTimeFormat("es-CO", {
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+});
+/** «8 sep» a partir de YYYY-MM-DD, sin que la zona horaria corra el día. */
+export const etiquetaDia = (f: string) => diaCorto.format(new Date(`${f}T12:00:00Z`)).replace(".", "");
+
 const numero = new Intl.NumberFormat("es-CO");
 export const formatoNumero = (n: number) => numero.format(Math.round(n));
 
@@ -143,4 +160,58 @@ export function nombrePropio(nombre: string): string {
       i > 0 && menores.has(p) ? (p === "d.c." ? "D.C." : p) : p.charAt(0).toLocaleUpperCase("es-CO") + p.slice(1),
     )
     .join("");
+}
+
+/** Un solo nombre para cada cosa, en toda la aplicación. Lo muestra «Cómo leer este tablero». */
+export const GLOSARIO: { termino: string; definicion: string }[] = [
+  {
+    termino: "Aporte",
+    definicion:
+      "Lo que registra una persona: un dolor, una problemática o una propuesta. Llega por la web, por atención asistida o por voz transcrita.",
+  },
+  {
+    termino: "Necesidad",
+    definicion:
+      "El expediente que agrupa uno o varios aportes sobre el mismo asunto y sigue su atención.",
+  },
+  {
+    termino: "Alerta activa",
+    definicion: "Un caso que pidió atención inmediata y todavía no se ha devuelto.",
+  },
+  {
+    termino: "Narrativa",
+    definicion:
+      "La síntesis vigente de un aporte. Se agrupa contando relatos iguales, sin inteligencia artificial.",
+  },
+  {
+    termino: "Eje y línea del Plan",
+    definicion:
+      "La parte del Plan Nacional de Desarrollo 2026–2030 con la que se relaciona el relato, por sus palabras clave.",
+  },
+  {
+    termino: "Aportes ubicados",
+    definicion:
+      "Los que tienen municipio confirmado. Los demás suman al total nacional, pero no pintan el mapa.",
+  },
+];
+
+/** Cómo se cuenta, en una frase por regla. Se repite en el pie del panel y en las narrativas. */
+export const REGLAS_CONTEO = [
+  "Un aporte o una necesidad en varios municipios se cuenta una sola vez por territorio.",
+  "Los aportes sin ubicación confirmada suman al total nacional, pero no al mapa.",
+];
+
+/** Los filtros vigentes en palabras, para decirlo igual en el panel, el modal y las narrativas. */
+export function describirFiltros(
+  filtros: { temas: string[]; canales: Canal[]; ejes: string[] },
+  pnd: { ejes: { id: string; numero: number; nombre: string }[] } | null,
+): string[] {
+  return [
+    ...filtros.temas.map((t) => (t === SIN_TEMA ? "Sin clasificar" : temaDe(t).corta)),
+    ...filtros.canales.map((c) => CANALES[c].etiqueta),
+    ...filtros.ejes.map((id) => {
+      const eje = pnd?.ejes.find((e) => e.id === id);
+      return eje ? `Eje ${eje.numero} · ${eje.nombre}` : id;
+    }),
+  ];
 }

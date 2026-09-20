@@ -6,6 +6,7 @@
 // el país y en ningún territorio— sale de `enTerritorio`.
 
 import { enTerritorio, type Filtrados } from "./agregar";
+import { SIN_TEMA } from "./catalogos";
 import { agruparNarrativas, narrativasDe } from "./narrativas";
 import type { DatosTablero } from "./tipos";
 
@@ -22,6 +23,10 @@ export type ResumenEje = {
   respondidas: number;
   alertas: number;
   narrativas: number;
+  /** Sectores del Gobierno desde los que llega este eje, de más a menos. */
+  sectores: { tema: string; n: number }[];
+  /** Dónde se concentra dentro del territorio. */
+  municipios: { codigo: string; n: number }[];
   relato: { cuerpo: string; veces: number; municipios: string[]; claves: string[] } | null;
 };
 
@@ -66,6 +71,16 @@ export function resumenEjes(
       claves = [...conteo].sort((a, b) => b[1] - a[1]).map(([c]) => c).slice(0, 3);
     }
 
+    const suyos = aportes.filter((a) => a.eje === eje.id);
+    const sectores = new Map<string, number>();
+    const municipios = new Map<string, number>();
+    for (const a of suyos) {
+      sectores.set(a.tema ?? SIN_TEMA, (sectores.get(a.tema ?? SIN_TEMA) ?? 0) + 1);
+      // R1: un aporte en varios municipios cuenta una vez en cada uno, nunca dos en el total.
+      for (const m of a.municipios)
+        if (codigo === null || m.startsWith(codigo)) municipios.set(m, (municipios.get(m) ?? 0) + 1);
+    }
+
     const delEje = expedientes.filter((e) => e.ejes.includes(eje.id));
     return {
       id: eje.id,
@@ -81,6 +96,14 @@ export function resumenEjes(
       respondidas: delEje.filter((e) => e.estado === "respondido").length,
       alertas: alertas.filter((a) => a.eje === eje.id).length,
       narrativas: suyas.length,
+      sectores: [...sectores]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([tema, n]) => ({ tema, n })),
+      municipios: [...municipios]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([codigo, n]) => ({ codigo, n })),
       relato: grupo && {
         cuerpo: grupo.cuerpo,
         veces: grupo.veces,
