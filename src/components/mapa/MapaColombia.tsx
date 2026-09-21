@@ -432,6 +432,10 @@ export default function MapaColombia(props: Props) {
   useEffect(() => {
     // React puede volver a montar los efectos (modo estricto, Suspense): un solo mapa por contenedor.
     if (!contenedor.current || mapaRef.current) return;
+    // Aquí no hay mapa nuestro vivo, así que lo que quede dentro es el lienzo de una instancia
+    // anterior que React desmontó (modo estricto, recarga en caliente). Mapbox avisa de ello y
+    // pierde interactividad: se deja el contenedor limpio antes de crear el nuevo.
+    contenedor.current.replaceChildren();
     let cancelado = false;
     const limpiezas: (() => void)[] = [];
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";

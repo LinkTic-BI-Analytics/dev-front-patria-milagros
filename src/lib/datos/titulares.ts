@@ -21,11 +21,14 @@ export function titular(
     territorio,
     lider,
     nacional,
+    temaFiltrado = false,
   }: {
     territorio: string;
     /** Territorio con más aportes dentro del ámbito actual, si lo hay. */
     lider: { nombre: string; valor: number } | null;
     nacional: boolean;
+    /** Hay un filtro de tema puesto: contar temas sobre lo ya filtrado sería circular. */
+    temaFiltrado?: boolean;
   },
 ): Titular | null {
   // 1. Lo que está sin atender manda sobre cualquier otra lectura.
@@ -42,16 +45,18 @@ export function titular(
       texto: `${formatoNumero(r.alertasActivas)} alertas activas en ${territorio} siguen sin recepción confirmada.`,
     };
 
-  // 2. Concentración territorial: dónde está pasando de verdad.
-  if (lider && r.aportes >= 20 && pct(lider.valor, r.aportes) >= 25)
+  // 2. Concentración territorial: dónde está pasando de verdad. Nunca por encima del 100 %:
+  // un aporte en varios municipios cuenta en cada uno, así que la suma de partes puede pasarse.
+  if (lider && r.aportes >= 20 && lider.valor <= r.aportes && pct(lider.valor, r.aportes) >= 25)
     return {
       regla: "concentracion",
       texto: `${lider.nombre} concentra el ${Math.round(pct(lider.valor, r.aportes))} % de los ${METRICAS.aportes.plural} de ${territorio}.`,
     };
 
-  // 3. De qué se habla.
+  // 3. De qué se habla. Con un tema ya filtrado no se dice: saldría «1 de cada 2 aportes habla
+  // de Vivienda» justo después de pedir solo los de Vivienda.
   const [tema] = r.temas.filter((t) => t.tema !== "sin_tema");
-  if (tema && r.aportes >= 20 && pct(tema.total, r.aportes) >= 20)
+  if (!temaFiltrado && tema && r.aportes >= 20 && pct(tema.total, r.aportes) >= 20)
     return {
       regla: "tema",
       texto: `1 de cada ${Math.max(2, Math.round(r.aportes / tema.total))} aportes de ${territorio} habla de ${temaDe(tema.tema).etiqueta}.`,

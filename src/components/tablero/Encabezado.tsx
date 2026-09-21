@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { motion } from "motion/react";
 import { LogOut, Orbit, RefreshCw } from "lucide-react";
 import { salir } from "@/app/acceso/acciones";
+import { corteBogota } from "@/lib/datos/catalogos";
 import { EASE } from "@/lib/ui/movimiento";
 
 // Reloj de medio minuto para el «hace X min». En el servidor no hay «ahora»: se muestra la hora
@@ -26,7 +27,6 @@ function haceCuanto(desde: string, tic: number) {
 }
 
 export function Encabezado({
-  proceso,
   actualizadoEn,
   hayPnd,
   ejesFiltrados,
@@ -36,7 +36,6 @@ export function Encabezado({
   falloActualizar,
   onActualizar,
 }: {
-  proceso: string;
   actualizadoEn: string;
   hayPnd: boolean;
   ejesFiltrados: number;
@@ -52,13 +51,7 @@ export function Encabezado({
   const [confirmaSalida, setConfirmaSalida] = useState(false);
   const relojSalida = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(relojSalida.current), []);
-  const hora = new Intl.DateTimeFormat("es-CO", {
-    timeZone: "America/Bogota",
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "numeric",
-    month: "short",
-  }).format(new Date(actualizadoEn));
+  const hora = corteBogota(actualizadoEn);
 
   return (
     <motion.header
@@ -84,7 +77,6 @@ export function Encabezado({
         <h1 className="titulo-display text-[11px] leading-[1.1] font-black tracking-tight uppercase sm:text-[13px] xl:text-[1.05rem]">
           Sistema de <span className="text-accent">Escucha</span> y Planeación Nacional
         </h1>
-        <p className="hidden truncate text-[11px] text-muted xl:block">{proceso}</p>
       </div>
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
@@ -107,10 +99,7 @@ export function Encabezado({
             )}
           </button>
         )}
-        <span
-          title={`Proceso: ${proceso}`}
-          className="hidden items-center gap-2 rounded-full bg-success-bg px-3 py-1 text-xs font-semibold text-success md:inline-flex"
-        >
+        <span className="hidden items-center gap-2 rounded-full bg-success-bg px-3 py-1 text-xs font-semibold text-success md:inline-flex">
           <span className="relative flex size-2">
             <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-70" />
             <span className="relative inline-flex size-2 rounded-full bg-success" />

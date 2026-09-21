@@ -139,13 +139,41 @@ const diaBogota = new Intl.DateTimeFormat("en-CA", {
 /** El «hoy» del tablero es el corte de los datos, no el reloj de quien mira (YYYY-MM-DD). */
 export const fechaEnBogota = (iso: string) => diaBogota.format(new Date(iso));
 
-const diaCorto = new Intl.DateTimeFormat("es-CO", {
-  day: "numeric",
-  month: "short",
-  timeZone: "UTC",
+// ── Fechas para mostrar ──────────────────────────────────────────────────────────────────
+//
+// Los nombres de mes se escriben aquí, NO con `Intl` en español: Node dice «20 de sept» y el
+// navegador «20 de sep.», y esa diferencia entre el HTML del servidor y el del cliente rompe la
+// hidratación de React. De `Intl` solo se toman partes numéricas, que sí son iguales en los dos.
+
+/** «8 sep» a partir de YYYY-MM-DD. */
+export const etiquetaDia = (fecha: string) => {
+  const [, m, d] = fecha.split("-");
+  return `${Number(d)} ${MESES[Number(m) - 1]}`;
+};
+
+/** «8 sep», con el año solo cuando no es el del corte de los datos. */
+export const etiquetaFecha = (fecha: string, anioDelCorte = "") => {
+  const [a] = fecha.split("-");
+  return `${etiquetaDia(fecha)}${a === anioDelCorte ? "" : ` ${a}`}`;
+};
+
+const relojBogota = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Bogota",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
 });
-/** «8 sep» a partir de YYYY-MM-DD, sin que la zona horaria corra el día. */
-export const etiquetaDia = (f: string) => diaCorto.format(new Date(`${f}T12:00:00Z`)).replace(".", "");
+/** «20 sep, 5:15 p. m.»: cuándo se leyó la base, en hora de Bogotá. */
+export function corteBogota(iso: string): string {
+  const partes = new Map(relojBogota.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  const hora24 = Number(partes.get("hour"));
+  const hora = hora24 % 12 || 12;
+  const dia = Number(partes.get("day"));
+  const mes = MESES[Number(partes.get("month")) - 1];
+  return `${dia} ${mes}, ${hora}:${partes.get("minute")} ${hora24 < 12 ? "a. m." : "p. m."}`;
+}
 
 const numero = new Intl.NumberFormat("es-CO");
 export const formatoNumero = (n: number) => numero.format(Math.round(n));

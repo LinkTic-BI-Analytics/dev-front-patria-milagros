@@ -340,14 +340,29 @@ export function Tablero({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [valores, metrica, departamento]);
 
+  // El líder tiene que ser del mismo territorio que las cifras: el ranking mira el nivel abierto
+  // (`departamento`), y con un departamento apenas seleccionado seguía siendo la lista nacional.
+  // De ahí salía «Antioquia concentra el 233 % de los aportes de Santander».
+  const liderDelTerritorio = useMemo(() => {
+    if (codigo?.length === 5) return null;
+    const v = valores[metrica];
+    const fuente = codigo
+      ? [...v.municipios].filter(([c]) => c.startsWith(codigo))
+      : [...v.departamentos];
+    const [mejor] = fuente.filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+    return mejor ? { nombre: nombre(mejor[0]), valor: mejor[1] } : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codigo, valores, metrica, datos.departamentos, datos.municipios]);
+
   const titulo = useMemo(
     () =>
       titular(resumen, {
         territorio: tituloTerritorio,
-        lider: ranking[0] ? { nombre: ranking[0].nombre, valor: ranking[0].valor } : null,
+        lider: liderDelTerritorio,
         nacional: codigo === null,
+        temaFiltrado: filtros.temas.length > 0,
       }),
-    [resumen, tituloTerritorio, ranking, codigo],
+    [resumen, tituloTerritorio, liderDelTerritorio, codigo, filtros.temas.length],
   );
 
   // ── Modo presentación: el recorrido de siempre, en pasos y a mano ──
@@ -476,7 +491,6 @@ export function Tablero({
         </p>
 
         <Encabezado
-          proceso={datos.proceso.nombre}
           actualizadoEn={datos.actualizadoEn}
           hayPnd={datos.pnd !== null}
           ejesFiltrados={filtros.ejes.length}
@@ -604,7 +618,7 @@ export function Tablero({
           <aside
             id="panel-territorial"
             aria-label="Panorama del territorio"
-            className="scroll-fino flex flex-col gap-3 md:grid md:grid-cols-2 md:items-start lg:sticky lg:top-[4.75rem] lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:flex lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:pr-1 [&>*]:shrink-0"
+            className="scroll-fino flex flex-col gap-3 md:grid md:grid-cols-2 md:items-start lg:sticky lg:top-[4.75rem] lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:flex lg:max-h-[calc(100dvh-5.5rem)] lg:items-stretch lg:overflow-y-auto lg:pr-1 [&>*]:shrink-0"
           >
             <motion.div
               initial={{ opacity: 0, x: 20 }}

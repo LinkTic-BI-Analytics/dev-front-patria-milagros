@@ -33,7 +33,14 @@ import {
   X,
 } from "lucide-react";
 import type { Filtrados, Filtros } from "@/lib/datos/agregar";
-import { CANALES, formatoNumero, nombrePropio, temaDe } from "@/lib/datos/catalogos";
+import {
+  CANALES,
+  etiquetaFecha,
+  fechaEnBogota,
+  formatoNumero,
+  nombrePropio,
+  temaDe,
+} from "@/lib/datos/catalogos";
 import {
   agruparNarrativas,
   alineacionPnd,
@@ -53,13 +60,8 @@ const suave = EASE.salida;
 const PAGINAS = [10, 25, 50];
 type Orden = "veces" | "fecha";
 
-const fechaCorta = new Intl.DateTimeFormat("es-CO", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  timeZone: "UTC",
-});
-const formatoFecha = (f: string) => fechaCorta.format(new Date(`${f}T12:00:00Z`));
+/** La fecha se escribe sin el año cuando es el del corte: en una tabla densa, el año sobra. */
+const formatoFecha = (f: string, anio = "") => etiquetaFecha(f, anio);
 
 type Vista = "agrupadas" | "todas";
 
@@ -120,6 +122,9 @@ export const Narrativas = memo(function Narrativas({
   const claveTabla = `${codigo}|${filtros.temas.join()}|${filtros.canales.join()}|${filtros.ejes.join()}|${vista}|${sinRelacion}|${lineaPnd}|${soloConfirmadas}`;
   const [pagina, setPagina] = useState({ contexto, n: 0 });
   const n = pagina.contexto === contexto ? pagina.n : 0;
+
+  // Año del corte: las fechas de ese año se muestran sin él.
+  const anioCorte = fechaEnBogota(datos.actualizadoEn).slice(0, 4);
 
   const nombreDe = (c: string) =>
     nombrePropio(
@@ -661,6 +666,7 @@ export const Narrativas = memo(function Narrativas({
                       nombreDe={nombreDe}
                       lineaDe={datos.pnd ? (id) => lineaPorId.get(id ?? "") ?? null : null}
                       claveAnimacion={`${claveTabla}|${actual}`}
+                      anio={anioCorte}
                       busqueda={q}
                       abierta={abierta}
                       onAbrir={(clave) => setAbierta((a) => (a === clave ? null : clave))}
@@ -680,6 +686,7 @@ export const Narrativas = memo(function Narrativas({
                       nombreDe={nombreDe}
                       lineaDe={datos.pnd ? (id) => lineaPorId.get(id ?? "") ?? null : null}
                       claveAnimacion={`${claveTabla}|${actual}`}
+                      anio={anioCorte}
                       busqueda={q}
                       orden={orden}
                       onOrdenar={ordenar}
@@ -793,12 +800,22 @@ export const Narrativas = memo(function Narrativas({
         </motion.div>
       </AnimatePresence>
 
-      <p className="relative mt-5 border-t border-subtle pt-3 text-[11px] leading-relaxed text-muted">
-        Cada narrativa es la síntesis vigente (última versión) de un aporte. «Confirmada» significa
-        que la persona validó su síntesis, no que los hechos estén verificados. La generalidad se
-        calcula contando temas, relatos repetidos y términos frente al total nacional con los mismos
-        filtros; no la redacta un modelo.
-      </p>
+      {/* Una línea visible y el método a un clic: la advertencia importante siempre a la vista,
+          el detalle solo para quien lo busca. */}
+      <div className="relative mt-5 border-t border-subtle pt-3 text-[11px] leading-relaxed text-muted">
+        <p>Cada narrativa es la síntesis vigente de un aporte, agrupada contando relatos iguales.</p>
+        {/* `details` es contenido de bloque: no puede ir dentro del `p` o el HTML sería inválido. */}
+        <details className="mt-1">
+          <summary className="cursor-pointer list-none underline decoration-dotted underline-offset-2 hover:text-secondary">
+            ¿Cómo se calcula?
+          </summary>
+          <span className="mt-1 block max-w-3xl">
+            «Confirmada» significa que la persona validó su síntesis, no que los hechos estén
+            verificados. La generalidad sale de contar temas, relatos repetidos y términos frente al
+            total nacional con los mismos filtros; no la redacta un modelo.
+          </span>
+        </details>
+      </div>
     </motion.section>
   );
 });
@@ -1291,11 +1308,13 @@ function Ordenable({
 function DetalleGrupo({
   grupo,
   nombreDe,
+  anio,
   onTerritorio,
   onVerTodas,
 }: {
   grupo: GrupoNarrativo;
   nombreDe: (c: string) => string;
+  anio: string;
   onTerritorio: (codigo: string) => void;
   onVerTodas: () => void;
 }) {
@@ -1336,7 +1355,7 @@ function DetalleGrupo({
             </li>
           ))}
           <li className="text-muted">
-            Entre {formatoFecha(grupo.primera)} y {formatoFecha(grupo.ultima)}
+            Entre {formatoFecha(grupo.primera, anio)} y {formatoFecha(grupo.ultima, anio)}
           </li>
           {grupo.confirmadas > 0 && (
             <li className="flex items-center gap-1 text-info">
@@ -1377,6 +1396,7 @@ function TablaAgrupada({
   nombreDe,
   lineaDe,
   claveAnimacion,
+  anio,
   busqueda,
   abierta,
   onAbrir,
@@ -1390,6 +1410,7 @@ function TablaAgrupada({
   nombreDe: (c: string) => string;
   lineaDe: BuscarLinea | null;
   claveAnimacion: string;
+  anio: string;
   busqueda: string;
   abierta: string | null;
   onAbrir: (clave: string) => void;
@@ -1474,7 +1495,7 @@ function TablaAgrupada({
                   <Veces veces={g.veces} maximo={maximo} i={i} />
                 </td>
                 <td className={`${celda} cifra text-right text-xs whitespace-nowrap text-secondary`}>
-                  {formatoFecha(g.ultima)}
+                  {formatoFecha(g.ultima, anio)}
                 </td>
               </FilaAnimada>
               {/* Siempre montada: una fila que aparece y desaparece rompería el borde de la tabla. */}
@@ -1492,6 +1513,7 @@ function TablaAgrupada({
                         <DetalleGrupo
                           grupo={g}
                           nombreDe={nombreDe}
+                          anio={anio}
                           onTerritorio={onTerritorio}
                           onVerTodas={() => onVerTodas(g)}
                         />
@@ -1520,7 +1542,7 @@ function TablaAgrupada({
               <div>
                 <Veces veces={g.veces} maximo={maximo} i={i} />
                 <p className="cifra mt-1 text-right text-[11px] text-muted">
-                  {formatoFecha(g.ultima)}
+                  {formatoFecha(g.ultima, anio)}
                 </p>
               </div>
             </div>
@@ -1537,6 +1559,7 @@ function TablaAgrupada({
                     <DetalleGrupo
                       grupo={g}
                       nombreDe={nombreDe}
+                      anio={anio}
                       onTerritorio={onTerritorio}
                       onVerTodas={() => onVerTodas(g)}
                     />
@@ -1582,6 +1605,7 @@ function TablaTodas({
   nombreDe,
   lineaDe,
   claveAnimacion,
+  anio,
   busqueda,
   orden,
   onOrdenar,
@@ -1590,6 +1614,7 @@ function TablaTodas({
   nombreDe: (c: string) => string;
   lineaDe: BuscarLinea | null;
   claveAnimacion: string;
+  anio: string;
   busqueda: string;
   orden: Ordenamiento;
   onOrdenar: (c: Orden) => void;
@@ -1650,7 +1675,7 @@ function TablaTodas({
                 <CanalYEstado fila={f} />
               </td>
               <td className={`${celda} cifra text-right text-xs whitespace-nowrap text-secondary`}>
-                {formatoFecha(f.aporte.fecha)}
+                {formatoFecha(f.aporte.fecha, anio)}
               </td>
             </FilaAnimada>
           ))}
@@ -1668,7 +1693,7 @@ function TablaTodas({
               />
               <div className="flex flex-col items-end gap-1">
                 <CanalYEstado fila={f} />
-                <p className="cifra text-[11px] text-muted">{formatoFecha(f.aporte.fecha)}</p>
+                <p className="cifra text-[11px] text-muted">{formatoFecha(f.aporte.fecha, anio)}</p>
               </div>
             </div>
           </TarjetaAnimada>
